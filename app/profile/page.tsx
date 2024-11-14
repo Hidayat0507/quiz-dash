@@ -4,12 +4,13 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Camera, Mail, Phone, MapPin } from 'lucide-react';
+import { Mail, Phone, MapPin } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/auth-context';
 import { createUserProfile, getUserProfile } from '@/lib/db';
 import { toast } from "sonner";
-import Image from 'next/image';
+import { UploadPhoto } from '@/components/upload-photo';
+import { useRouter } from 'next/navigation';
 
 interface ProfileData {
   firstName: string;
@@ -31,33 +32,35 @@ const defaultProfileData: ProfileData = {
 
 export default function Profile() {
   const { user } = useAuth();
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [profileData, setProfileData] = useState<ProfileData>(defaultProfileData);
 
   useEffect(() => {
     const fetchProfile = async () => {
-      if (user) {
-        try {
-          const profile = await getUserProfile(user.uid);
-          if (profile) {
-            setProfileData(prev => ({
-              ...prev,
-              ...profile,
-              email: user.email || prev.email
-            }));
-          } else {
-            setProfileData(prev => ({
-              ...prev,
-              email: user.email || prev.email
-            }));
-          }
-        } catch (error) {
-          console.error('Error fetching profile:', error);
-          toast.error('Failed to load profile');
-        } finally {
-          setLoading(false);
+      if (!user) {
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const profile = await getUserProfile(user.uid);
+        if (profile) {
+          setProfileData({
+            firstName: profile.firstName || '',
+            lastName: profile.lastName || '',
+            email: user.email || profile.email || '',
+            phone: profile.phone || '',
+            location: profile.location || '',
+            photoURL: profile.photoURL || defaultProfileData.photoURL
+          });
         }
+      } catch (error) {
+        console.error('Error fetching profile:', error);
+        toast.error('Failed to load profile data');
+      } finally {
+        setLoading(false);
       }
     };
 
@@ -74,22 +77,51 @@ export default function Profile() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
+    if (!user) {
+      toast.error('Please sign in to update your profile');
+      return;
+    }
 
     setSaving(true);
     try {
       await createUserProfile(user.uid, profileData);
-      toast.success("Profile updated successfully!");
+      toast.success('Profile updated successfully!');
     } catch (error) {
       console.error('Error updating profile:', error);
-      toast.error("Failed to update profile");
+      toast.error('Failed to update profile');
     } finally {
       setSaving(false);
     }
   };
 
+  const handlePhotoChange = (url: string) => {
+    setProfileData(prev => ({
+      ...prev,
+      photoURL: url
+    }));
+  };
+
+  if (!user) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
+        <div className="text-center">
+          <h2 className="text-xl font-semibold text-gray-800 mb-2">Please Sign In</h2>
+          <p className="text-gray-500 mb-4">You need to be signed in to view your profile.</p>
+          <Button onClick={() => router.push('/login')}>Sign In</Button>
+        </div>
+      </div>
+    );
+  }
+
   if (loading) {
-    return <div className="flex items-center justify-center min-h-screen">Loading...</div>;
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
+          <p className="mt-2 text-gray-500">Loading profile...</p>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -98,24 +130,11 @@ export default function Profile() {
 
       <Card className="p-6">
         <form onSubmit={handleSubmit} className="flex flex-col md:flex-row gap-8">
-          <div className="flex flex-col items-center space-y-4">
-            <div className="relative">
-              <div className="w-32 h-32 relative rounded-full overflow-hidden">
-                <Image
-                  src={profileData.photoURL}
-                  alt="Profile"
-                  fill
-                  sizes="128px"
-                  className="object-cover"
-                  priority
-                />
-              </div>
-              <button className="absolute bottom-0 right-0 p-2 bg-blue-500 rounded-full text-white hover:bg-blue-600">
-                <Camera className="w-4 h-4" />
-              </button>
-            </div>
-            <Button type="button">Change Photo</Button>
-          </div>
+          <UploadPhoto
+            currentPhotoURL={profileData.photoURL}
+            onPhotoChange={handlePhotoChange}
+            userId={user.uid}
+          />
 
           <div className="flex-1 space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -180,7 +199,9 @@ export default function Profile() {
             </div>
 
             <div className="flex justify-end space-x-4">
-              <Button variant="outline" type="button">Cancel</Button>
+              <Button variant="outline" type="button" onClick={() => router.push('/')}>
+                Cancel
+              </Button>
               <Button type="submit" disabled={saving}>
                 {saving ? 'Saving...' : 'Save Changes'}
               </Button>

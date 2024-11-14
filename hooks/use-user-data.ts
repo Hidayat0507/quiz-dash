@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/auth-context';
 import { getUserProfile, getQuizResults, getSettings } from '@/lib/db';
+import { toast } from 'sonner';
 
 export function useUserData() {
   const { user } = useAuth();
@@ -27,12 +28,13 @@ export function useUserData() {
         ]);
 
         setProfile(profileData);
-        setQuizResults(resultsData);
+        setQuizResults(resultsData || []);
         setSettings(settingsData);
         setError(null);
       } catch (err) {
-        setError('Failed to fetch user data');
-        console.error('Error fetching user data:', err);
+        const errorMessage = err instanceof Error ? err.message : 'Failed to fetch user data';
+        setError(errorMessage);
+        toast.error(errorMessage);
       } finally {
         setLoading(false);
       }
@@ -43,10 +45,14 @@ export function useUserData() {
 
   // Transform quiz results into stats format for dashboard compatibility
   const stats = quizResults.slice(0, 4).map(result => ({
-    title: result.category,
-    value: `${Math.round((result.score / result.totalQuestions) * 100)}%`,
+    title: result.category || 'Unknown',
+    value: result.totalQuestions > 0 
+      ? `${Math.round((result.score / result.totalQuestions) * 100)}%` 
+      : '0%',
     icon: result.icon,
-    change: `${result.score}/${result.totalQuestions} correct`
+    change: result.totalQuestions > 0 
+      ? `${result.score}/${result.totalQuestions} correct` 
+      : 'No attempts'
   }));
 
   return { profile, stats, settings, loading, error };

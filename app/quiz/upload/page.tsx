@@ -1,41 +1,90 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Upload, FileType, File, Loader2, Plus, X } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
-import { uploadQuiz } from '@/lib/db';
+import { uploadQuiz, addCategory, getCategories, type Category } from '@/lib/db';
 import { toast } from 'sonner';
-import type { Quiz, QuizQuestion } from '@/lib/db';
-
-const categories = [
-  { id: 'web', name: 'Web Development' },
-  { id: 'mobile', name: 'Mobile Development' },
-  { id: 'cloud', name: 'Cloud Computing' },
-  { id: 'ai', name: 'Artificial Intelligence' },
-];
+import type { QuizQuestion } from '@/lib/db';
 
 const difficulties = [
-  { id: 'beginner', name: 'Beginner' },
-  { id: 'intermediate', name: 'Intermediate' },
-  { id: 'advanced', name: 'Advanced' },
+  { id: 'beginner', name: 'Beginner', color: 'bg-green-100 text-green-800' },
+  { id: 'intermediate', name: 'Intermediate', color: 'bg-blue-100 text-blue-800' },
+  { id: 'advanced', name: 'Advanced', color: 'bg-red-100 text-red-800' },
 ];
 
 export default function QuizUpload() {
   const { user } = useAuth();
   const [category, setCategory] = useState('');
   const [difficulty, setDifficulty] = useState('');
-  const [title, setTitle] = useState('');
   const [questions, setQuestions] = useState<QuizQuestion[]>([]);
   const [currentQuestion, setCurrentQuestion] = useState('');
   const [options, setOptions] = useState(['', '', '', '']);
   const [correctAnswer, setCorrectAnswer] = useState('');
   const [saving, setSaving] = useState(false);
+  const [newCategory, setNewCategory] = useState('');
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [loadingCategories, setLoadingCategories] = useState(true);
+  const [addingCategory, setAddingCategory] = useState(false);
+
+  useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        const fetchedCategories = await getCategories();
+        setCategories(fetchedCategories);
+      } catch (error) {
+        toast.error('Failed to load categories');
+      } finally {
+        setLoadingCategories(false);
+      }
+    };
+
+    fetchCategories();
+  }, []);
+
+  const addNewCategory = async () => {
+    if (!newCategory.trim()) {
+      toast.error('Please enter a category name');
+      return;
+    }
+
+    const categoryExists = categories.some(cat => 
+      cat.name.toLowerCase() === newCategory.toLowerCase()
+    );
+
+    if (categoryExists) {
+      toast.error('This category already exists');
+      return;
+    }
+
+    setAddingCategory(true);
+    try {
+      const newCategoryObj = await addCategory({
+        name: newCategory
+      });
+
+      if (newCategoryObj) {
+        setCategories(prev => [...prev, newCategoryObj]);
+        setCategory(newCategoryObj.id); // Set the newly created category as selected
+        setNewCategory('');
+        setDialogOpen(false);
+        toast.success('Category added successfully');
+      }
+    } catch (error) {
+      console.error('Error adding category:', error);
+      toast.error('Failed to add category');
+    } finally {
+      setAddingCategory(false);
+    }
+  };
 
   const handleOptionChange = (index: number, value: string) => {
     const newOptions = [...options];
@@ -71,7 +120,7 @@ export default function QuizUpload() {
   };
 
   const handleSave = async () => {
-    if (!user?.uid || !title || !category || !difficulty || questions.length === 0) {
+    if (!user?.uid || !category || !difficulty || questions.length === 0) {
       toast.error('Please fill in all required fields');
       return;
     }
@@ -79,7 +128,7 @@ export default function QuizUpload() {
     setSaving(true);
     try {
       await uploadQuiz(user.uid, {
-        title,
+        title: `${category}-${difficulty}-${Date.now()}`,
         category,
         difficulty,
         questions,
@@ -89,7 +138,6 @@ export default function QuizUpload() {
       
       toast.success('Quiz saved successfully!');
       // Reset form
-      setTitle('');
       setCategory('');
       setDifficulty('');
       setQuestions([]);
@@ -101,28 +149,28 @@ export default function QuizUpload() {
     }
   };
 
-  const validOptions = options.filter(option => option.trim() !== '');
+  if (loadingCategories) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
+          <p className="mt-2 text-gray-500">Loading categories...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       <h1 className="text-3xl font-bold">Create Quiz</h1>
 
       <Card className="p-6">
-        <div className="space-y-6">
+        <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
-            <Label>Quiz Title</Label>
-            <Input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Enter quiz title"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Category</Label>
+            <Label>Category</Label>
+            <div className="flex gap-2">
               <Select value={category} onValueChange={setCategory}>
-                <SelectTrigger>
+                <SelectTrigger className="flex-1">
                   <SelectValue placeholder="Select a category" />
                 </SelectTrigger>
                 <SelectContent>
@@ -133,23 +181,61 @@ export default function QuizUpload() {
                   ))}
                 </SelectContent>
               </Select>
+              <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button variant="outline" size="icon">
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Add New Category</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4 pt-4">
+                    <div className="space-y-2">
+                      <Label>Category Name</Label>
+                      <Input
+                        value={newCategory}
+                        onChange={(e) => setNewCategory(e.target.value)}
+                        placeholder="Enter category name"
+                      />
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button 
+                      onClick={addNewCategory} 
+                      disabled={addingCategory || !newCategory.trim()}
+                      className="w-full"
+                    >
+                      {addingCategory ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Adding...
+                        </>
+                      ) : (
+                        'Add Category'
+                      )}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
             </div>
+          </div>
 
-            <div className="space-y-2">
-              <Label>Difficulty</Label>
-              <Select value={difficulty} onValueChange={setDifficulty}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select difficulty" />
-                </SelectTrigger>
-                <SelectContent>
-                  {difficulties.map((diff) => (
-                    <SelectItem key={diff.id} value={diff.id}>
-                      {diff.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+          <div className="space-y-2">
+            <Label>Difficulty</Label>
+            <Select value={difficulty} onValueChange={setDifficulty}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select difficulty" />
+              </SelectTrigger>
+              <SelectContent>
+                {difficulties.map((diff) => (
+                  <SelectItem key={diff.id} value={diff.id}>
+                    {diff.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </div>
       </Card>
@@ -187,7 +273,7 @@ export default function QuizUpload() {
                   <SelectValue placeholder="Select correct answer" />
                 </SelectTrigger>
                 <SelectContent>
-                  {validOptions.map((option, index) => (
+                  {options.filter(option => option.trim() !== '').map((option, index) => (
                     <SelectItem key={index} value={option}>
                       {option}
                     </SelectItem>
