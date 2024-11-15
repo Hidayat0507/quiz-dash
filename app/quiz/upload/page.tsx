@@ -8,16 +8,16 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
-import { Upload, FileType, File, Loader2, Plus, X } from 'lucide-react';
+import { Plus, X, Loader2 } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { uploadQuiz, addCategory, getCategories, type Category } from '@/lib/db';
 import { toast } from 'sonner';
 import type { QuizQuestion } from '@/lib/db';
 
 const difficulties = [
-  { id: 'beginner', name: 'Beginner', color: 'bg-green-100 text-green-800' },
-  { id: 'intermediate', name: 'Intermediate', color: 'bg-blue-100 text-blue-800' },
-  { id: 'advanced', name: 'Advanced', color: 'bg-red-100 text-red-800' },
+  { id: 'beginner', name: 'Beginner' },
+  { id: 'intermediate', name: 'Intermediate' },
+  { id: 'advanced', name: 'Advanced' },
 ];
 
 export default function QuizUpload() {
@@ -71,13 +71,11 @@ export default function QuizUpload() {
         name: newCategory
       });
 
-      if (newCategoryObj) {
-        setCategories(prev => [...prev, newCategoryObj]);
-        setCategory(newCategoryObj.id); // Set the newly created category as selected
-        setNewCategory('');
-        setDialogOpen(false);
-        toast.success('Category added successfully');
-      }
+      setCategories(prev => [...prev, newCategoryObj]);
+      setCategory(newCategoryObj.id);
+      setNewCategory('');
+      setDialogOpen(false);
+      toast.success('Category added successfully');
     } catch (error) {
       console.error('Error adding category:', error);
       toast.error('Failed to add category');
@@ -120,8 +118,18 @@ export default function QuizUpload() {
   };
 
   const handleSave = async () => {
-    if (!user?.uid || !category || !difficulty || questions.length === 0) {
-      toast.error('Please fill in all required fields');
+    if (!user?.uid) {
+      toast.error('Please sign in to save the quiz');
+      return;
+    }
+
+    if (!category || !difficulty) {
+      toast.error('Please select a category and difficulty level');
+      return;
+    }
+
+    if (questions.length === 0) {
+      toast.error('Please add at least one question');
       return;
     }
 
@@ -162,8 +170,6 @@ export default function QuizUpload() {
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
-      <h1 className="text-3xl font-bold">Create Quiz</h1>
-
       <Card className="p-6">
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">

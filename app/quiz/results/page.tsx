@@ -4,8 +4,8 @@ import { useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Trophy, Target, ArrowRight } from 'lucide-react';
-import confetti from 'canvas-confetti'
+import { Trophy, Target, ArrowRight, BarChart } from 'lucide-react';
+import confetti from 'canvas-confetti';
 
 export default function QuizResults() {
   const searchParams = useSearchParams();
@@ -67,9 +67,9 @@ export default function QuizResults() {
       <Card className="p-6">
         <div className="space-y-6">
           <div className="text-center space-y-2">
-            <h2 className="text-2xl font-semibold">Whats Next?</h2>
+            <h2 className="text-2xl font-semibold">What's Next?</h2>
             <p className="text-gray-500">
-              Continue your learning journey or try another quiz!
+              Continue your learning journey or check your progress!
             </p>
           </div>
 
@@ -78,7 +78,12 @@ export default function QuizResults() {
               Try Another Quiz
               <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
-            <Button variant="outline" onClick={() => router.push('/quiz/performance')}>
+            <Button 
+              variant="outline" 
+              onClick={() => router.push('/quiz/performance')}
+              className="flex items-center"
+            >
+              <BarChart className="mr-2 h-4 w-4" />
               View Performance History
             </Button>
           </div>

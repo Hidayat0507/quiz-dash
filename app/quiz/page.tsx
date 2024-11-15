@@ -10,9 +10,9 @@ import { getCategories, type Category } from '@/lib/db';
 import { toast } from 'sonner';
 
 const difficulties = [
-  { id: 'beginner', name: 'Beginner', color: 'bg-green-100 text-green-800' },
-  { id: 'intermediate', name: 'Intermediate', color: 'bg-blue-100 text-blue-800' },
-  { id: 'advanced', name: 'Advanced', color: 'bg-red-100 text-red-800' },
+  { id: 'beginner', name: 'Beginner' },
+  { id: 'intermediate', name: 'Intermediate' },
+  { id: 'advanced', name: 'Advanced' },
 ];
 
 export default function QuizPage() {
@@ -28,6 +28,7 @@ export default function QuizPage() {
         const fetchedCategories = await getCategories();
         setCategories(fetchedCategories);
       } catch (error) {
+        console.error('Error fetching categories:', error);
         toast.error('Failed to load categories');
       } finally {
         setLoading(false);
@@ -38,9 +39,12 @@ export default function QuizPage() {
   }, []);
 
   const handleStartQuiz = () => {
-    if (selectedCategory && selectedDifficulty) {
-      router.push(`/quiz/questions?category=${selectedCategory}&difficulty=${selectedDifficulty}`);
+    if (!selectedCategory || !selectedDifficulty) {
+      toast.error('Please select both category and difficulty');
+      return;
     }
+
+    router.push(`/quiz/questions?categoryId=${selectedCategory}&difficulty=${selectedDifficulty}`);
   };
 
   if (loading) {
