@@ -14,7 +14,7 @@ export function Sidebar({ isOpen }: SidebarProps) {
   const menuItems = [
     { href: '/', icon: LayoutDashboard, label: 'Dashboard' },
     { href: '/quiz', icon: Brain, label: 'Quiz' },
-    { href: '/quiz/upload', icon: Upload, label: 'Upload Quiz' },
+    { href: '/quiz/create', icon: Upload, label: 'Create Quiz' },
     { href: '/profile', icon: User, label: 'Profile' },
     { href: '/settings', icon: Settings, label: 'Settings' },
   ];
