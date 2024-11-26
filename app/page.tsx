@@ -7,11 +7,11 @@ import { Activity, Award, Brain, Clock, Target, Trophy } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { Button } from "@/components/ui/button";
 import { useRouter } from 'next/navigation';
-import { getQuizResults } from '@/lib/db';
+import { getQuizResults, type QuizResult } from '@/lib/quiz';
 
 export default function Dashboard() {
   const { user } = useAuth();
-  const [results, setResults] = useState<any[]>([]);
+  const [results, setResults] = useState<QuizResult[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
@@ -25,11 +25,13 @@ export default function Dashboard() {
 
       try {
         const quizResults = await getQuizResults(user.uid);
-        setResults(quizResults);
+        setResults(quizResults.sort((a: QuizResult, b: QuizResult) => 
+          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+        ));
         setError(null);
       } catch (error) {
         console.error('Error fetching results:', error);
-        setError('Failed to load quiz results. Please try again later.');
+        setError(error instanceof Error ? error.message : 'Failed to load quiz results');
       } finally {
         setLoading(false);
       }
@@ -38,13 +40,19 @@ export default function Dashboard() {
     fetchResults();
   }, [user]);
 
+  if (!user) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
+        <h1 className="text-2xl font-bold">Welcome to Quiz Dashboard</h1>
+        <p className="text-gray-500">Please sign in to view your quiz performance</p>
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
-          <p className="mt-2 text-gray-500">Loading your performance data...</p>
-        </div>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
       </div>
     );
   }
@@ -52,52 +60,25 @@ export default function Dashboard() {
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
-        <div className="text-center">
-          <h2 className="text-xl font-semibold text-gray-800 mb-2">Oops! Something went wrong</h2>
-          <p className="text-gray-500 mb-4">{error}</p>
-          <Button onClick={() => window.location.reload()}>Try Again</Button>
-        </div>
-      </div>
-    );
-  }
-
-  if (!user) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
-        <div className="text-center">
-          <h2 className="text-xl font-semibold text-gray-800 mb-2">Please Sign In</h2>
-          <p className="text-gray-500 mb-4">You need to be signed in to view your performance.</p>
-          <Button onClick={() => router.push('/login')}>Sign In</Button>
-        </div>
-      </div>
-    );
-  }
-
-  if (results.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
-        <div className="text-center">
-          <Trophy className="w-16 h-16 text-blue-500 mx-auto mb-4" />
-          <h2 className="text-xl font-semibold text-gray-800 mb-2">No Quiz Results Yet</h2>
-          <p className="text-gray-500 mb-4">Take your first quiz to start tracking your performance!</p>
-          <Button onClick={() => router.push('/quiz')}>Start a Quiz</Button>
-        </div>
+        <h1 className="text-2xl font-bold text-red-600">Error</h1>
+        <p className="text-gray-500">{error}</p>
+        <Button onClick={() => window.location.reload()}>Try Again</Button>
       </div>
     );
   }
 
   const performanceData = results.slice(0, 6).reverse().map(result => ({
-    month: new Date(result.timestamp).toLocaleDateString('en-US', { month: 'short' }),
+    date: new Date(result.timestamp).toLocaleDateString(),
     score: Math.round((result.score / result.totalQuestions) * 100)
   }));
 
   const categoryData = Object.entries(
     results.reduce((acc: { [key: string]: number }, result) => {
-      acc[result.category] = (acc[result.category] || 0) + 1;
+      acc[result.categoryName] = (acc[result.categoryName] || 0) + 1;
       return acc;
     }, {})
-  ).map(([category, completed]) => ({
-    category,
+  ).map(([categoryName, completed]) => ({
+    categoryName,
     completed
   }));
 
@@ -109,135 +90,105 @@ export default function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        {/* Stats Cards */}
         <Card className="p-6">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <div className="bg-blue-100 p-2 rounded-lg">
+              <Trophy className="h-5 w-5 text-blue-600" />
+            </div>
             <div>
               <p className="text-sm text-gray-500">Total Quizzes</p>
-              <h3 className="text-2xl font-bold mt-1">{results.length}</h3>
+              <p className="text-2xl font-bold">{results.length}</p>
             </div>
-            <Brain className="h-8 w-8 text-blue-500" />
           </div>
         </Card>
 
         <Card className="p-6">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <div className="bg-green-100 p-2 rounded-lg">
+              <Target className="h-5 w-5 text-green-600" />
+            </div>
             <div>
               <p className="text-sm text-gray-500">Average Score</p>
-              <h3 className="text-2xl font-bold mt-1">
+              <p className="text-2xl font-bold">
                 {Math.round(
-                  results.reduce((acc, result) => 
-                    acc + (result.score / result.totalQuestions) * 100, 0
-                  ) / results.length
+                  results.reduce((acc, curr) => 
+                    acc + (curr.score / curr.totalQuestions) * 100, 0
+                  ) / results.length || 0
                 )}%
-              </h3>
+              </p>
             </div>
-            <Target className="h-8 w-8 text-blue-500" />
           </div>
         </Card>
 
         <Card className="p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-500">Best Score</p>
-              <h3 className="text-2xl font-bold mt-1">
-                {Math.round(
-                  Math.max(...results.map(result => 
-                    (result.score / result.totalQuestions) * 100
-                  ))
-                )}%
-              </h3>
+          <div className="flex items-center space-x-3">
+            <div className="bg-purple-100 p-2 rounded-lg">
+              <Award className="h-5 w-5 text-purple-600" />
             </div>
-            <Trophy className="h-8 w-8 text-blue-500" />
+            <div>
+              <p className="text-sm text-gray-500">Categories</p>
+              <p className="text-2xl font-bold">{categoryData.length}</p>
+            </div>
           </div>
         </Card>
 
         <Card className="p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-500">Recent Activity</p>
-              <h3 className="text-2xl font-bold mt-1">
-                {new Date(results[0].timestamp).toLocaleDateString()}
-              </h3>
+          <div className="flex items-center space-x-3">
+            <div className="bg-orange-100 p-2 rounded-lg">
+              <Activity className="h-5 w-5 text-orange-600" />
             </div>
-            <Activity className="h-8 w-8 text-blue-500" />
+            <div>
+              <p className="text-sm text-gray-500">Questions</p>
+              <p className="text-2xl font-bold">
+                {results.reduce((acc, curr) => acc + curr.totalQuestions, 0)}
+              </p>
+            </div>
           </div>
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Card className="p-6">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-lg font-semibold">Performance Trend</h2>
-            <div className="flex items-center space-x-2">
-              <Clock className="h-4 w-4 text-gray-500" />
-              <span className="text-sm text-gray-500">Last 6 quizzes</span>
-            </div>
-          </div>
-          <div className="h-[300px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={performanceData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#eee" />
-                <XAxis 
-                  dataKey="month" 
-                  stroke="#888" 
-                  fontSize={12}
-                />
-                <YAxis 
-                  stroke="#888" 
-                  fontSize={12}
-                  domain={[0, 100]}
-                  ticks={[0, 25, 50, 75, 100]}
-                />
-                <Tooltip />
-                <Line 
-                  type="monotone" 
-                  dataKey="score" 
-                  stroke="#3b82f6" 
-                  strokeWidth={2}
-                  dot={{ fill: '#3b82f6' }}
-                  name="Score (%)"
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </Card>
-
-        <Card className="p-6">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-lg font-semibold">Quiz Categories</h2>
-            <div className="flex items-center space-x-2">
-              <Award className="h-4 w-4 text-gray-500" />
-              <span className="text-sm text-gray-500">Attempts per category</span>
-            </div>
-          </div>
-          <div className="h-[300px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={categoryData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#eee" />
-                <XAxis 
-                  dataKey="category" 
-                  stroke="#888" 
-                  fontSize={12}
-                />
-                <YAxis 
-                  stroke="#888" 
-                  fontSize={12}
-                />
-                <Tooltip />
-                <Bar 
-                  dataKey="completed" 
-                  fill="#3b82f6"
-                  name="Attempts"
-                  radius={[4, 4, 0, 0]}
-                />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </Card>
-      </div>
-
+      {/* Performance Chart */}
       <Card className="p-6">
-        <div className="mb-4">
+        <div className="mb-6">
+          <h2 className="text-lg font-semibold">Performance Trend</h2>
+          <p className="text-sm text-gray-500">Your quiz scores over time</p>
+        </div>
+        <div className="h-[300px]">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={performanceData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="date" />
+              <YAxis />
+              <Tooltip />
+              <Line type="monotone" dataKey="score" stroke="#2563eb" strokeWidth={2} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </Card>
+
+      {/* Category Distribution */}
+      <Card className="p-6">
+        <div className="mb-6">
+          <h2 className="text-lg font-semibold">Category Distribution</h2>
+          <p className="text-sm text-gray-500">Number of quizzes taken per category</p>
+        </div>
+        <div className="h-[300px]">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={categoryData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="categoryName" />
+              <YAxis />
+              <Tooltip />
+              <Bar dataKey="completed" fill="#2563eb" />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </Card>
+
+      {/* Recent Activity */}
+      <Card className="p-6">
+        <div className="mb-6">
           <h2 className="text-lg font-semibold">Recent Quiz History</h2>
           <p className="text-sm text-gray-500">Your latest quiz attempts and scores</p>
         </div>
@@ -249,7 +200,7 @@ export default function Dashboard() {
                   <Brain className="h-5 w-5 text-blue-600" />
                 </div>
                 <div>
-                  <p className="font-medium">{result.category}</p>
+                  <p className="font-medium">{result.categoryName}</p>
                   <p className="text-sm text-gray-500">
                     {new Date(result.timestamp).toLocaleDateString()}
                   </p>

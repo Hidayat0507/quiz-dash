@@ -1,24 +1,39 @@
 "use client";
 
-import { initializeApp, getApps } from 'firebase/app';
+import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { 
+  initializeFirestore,
+  type FirestoreSettings,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+  CACHE_SIZE_UNLIMITED
+} from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 
 const firebaseConfig = {
-  apiKey: "AIzaSyDkhdt39uIV9Xlxb0NvXCEj1CZTv-1onA8",
-  authDomain: "dashboard-1a6c6.firebaseapp.com", 
-  projectId: "dashboard-1a6c6",
-  storageBucket: "dashboard-1a6c6.firebasestorage.app",
-  messagingSenderId: "148265952084",
-  appId: "1:148265952084:web:afd8218afb797f52491ec1",
-  measurementId: "G-K98RZLRWYZ"
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
 };
 
-// Initialize Firebase only if it hasn't been initialized already
-const app = !getApps().length ? initializeApp(firebaseConfig) : getApps()[0];
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
-const db = getFirestore(app);
+
+// Initialize Firestore with optimized settings for multi-tab support
+const firestoreSettings: FirestoreSettings = {
+  localCache: persistentLocalCache({ 
+    cacheSizeBytes: CACHE_SIZE_UNLIMITED,
+    tabManager: persistentMultipleTabManager()
+  })
+};
+
+const db = initializeFirestore(app, firestoreSettings);
 const storage = getStorage(app);
 
 export { app, auth, db, storage };

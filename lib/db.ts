@@ -12,19 +12,10 @@ import {
   QueryDocumentSnapshot,
   setDoc,
   doc,
-  enableIndexedDbPersistence,
   getDoc
 } from 'firebase/firestore';
 import { toast } from 'sonner';
 
-// Enable offline persistence with error handling
-try {
-  enableIndexedDbPersistence(db);
-} catch (err) {
-  console.warn('Persistence failed:', err);
-}
-
-// Error handling helper
 const handleFirebaseError = async <T>(operation: () => Promise<T>, errorMessage: string): Promise<T> => {
   try {
     return await operation();
@@ -34,7 +25,7 @@ const handleFirebaseError = async <T>(operation: () => Promise<T>, errorMessage:
   }
 };
 
-// Interfaces
+// User Profile Interface
 export interface UserProfile {
   id: string;
   firstName: string;
@@ -46,110 +37,68 @@ export interface UserProfile {
   userId: string;
 }
 
-export interface QuizQuestion {
-  question: string;
-  options: string[];
-  correctAnswer: string;
-}
-
-export interface Quiz {
+// Subject Interface
+export interface Subject {
   id: string;
-  title: string;
-  category: string;
-  difficulty: string;
-  questions: QuizQuestion[];
+  name: string;
+  description: string;
   createdAt: string;
-  userId: string;
 }
 
-export interface QuizResult {
-  id: string;
-  timestamp: string;
-  category: string;
-  difficulty: string;
-  score: number;
-  totalQuestions: number;
-  userId: string;
-}
-
+// Category Interface
 export interface Category {
   id: string;
   name: string;
+  subjectId: string;
+  description: string;
   createdAt: string;
 }
 
-// User profile functions
-export const createUserProfile = async (userId: string, data: Partial<UserProfile>): Promise<boolean> => {
+// Quiz Interface
+export interface Quiz {
+  id: string;
+  // Add other quiz properties here
+}
+
+// Subject functions
+export const getSubjects = async (): Promise<Subject[]> => {
   return handleFirebaseError(async () => {
-    const userRef = doc(db, 'users', userId);
-    await setDoc(userRef, {
-      ...data,
-      userId,
-      updatedAt: new Date().toISOString()
-    }, { merge: true });
-    return true;
-  }, 'Error creating user profile');
-};
-
-export const getUserProfile = async (userId: string): Promise<UserProfile | null> => {
-  return handleFirebaseError(async () => {
-    const userRef = doc(db, 'users', userId);
-    const userSnap = await getDoc(userRef);
-    
-    if (userSnap.exists()) {
-      return {
-        id: userSnap.id,
-        firstName: userSnap.data().firstName || '',
-        lastName: userSnap.data().lastName || '',
-        email: userSnap.data().email || '',
-        phone: userSnap.data().phone || '',
-        location: userSnap.data().location || '',
-        photoURL: userSnap.data().photoURL || 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80',
-        userId: userSnap.data().userId
-      };
-    }
-    return null;
-  }, 'Error getting user profile');
-};
-
-// Quiz results functions
-export const getQuizResults = async (userId: string): Promise<QuizResult[]> => {
-  try {
-    const resultsQuery = query(
-      collection(db, 'quiz_results'),
-      where('userId', '==', userId),
-      orderBy('timestamp', 'desc')
-    );
-
-    const resultsSnap = await getDocs(resultsQuery);
-    return resultsSnap.docs.map(doc => ({
+    const subjectsSnap = await getDocs(collection(db, 'subjects'));
+    const subjects = subjectsSnap.docs.map(doc => ({
       id: doc.id,
       ...doc.data()
-    } as QuizResult));
-  } catch (error: any) {
-    if (error.code === 'failed-precondition') {
-      const unorderedQuery = query(
-        collection(db, 'quiz_results'),
-        where('userId', '==', userId)
-      );
-      const resultsSnap = await getDocs(unorderedQuery);
-      const results = resultsSnap.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      } as QuizResult));
-      
-      return results.sort((a, b) => 
-        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-      );
-    }
-    throw error;
-  }
+    } as Subject));
+
+    return subjects.sort((a, b) => a.name.localeCompare(b.name));
+  }, 'Error getting subjects');
 };
 
-// Categories functions
-export const getCategories = async (): Promise<Category[]> => {
+export const addSubject = async (data: { name: string; description: string }): Promise<Subject> => {
   return handleFirebaseError(async () => {
-    const categoriesSnap = await getDocs(collection(db, 'categories'));
+    const subjectData = {
+      name: data.name.trim(),
+      description: data.description.trim(),
+      createdAt: new Date().toISOString()
+    };
+
+    const docRef = await addDoc(collection(db, 'subjects'), subjectData);
+    return {
+      id: docRef.id,
+      ...subjectData
+    };
+  }, 'Error adding subject');
+};
+
+// Category functions
+export const getCategories = async (subjectId?: string): Promise<Category[]> => {
+  return handleFirebaseError(async () => {
+    const categoriesRef = collection(db, 'categories');
+    
+    const categoriesQuery = subjectId
+      ? query(categoriesRef, where('subjectId', '==', subjectId))
+      : categoriesRef;
+
+    const categoriesSnap = await getDocs(categoriesQuery);
     const categories = categoriesSnap.docs.map(doc => ({
       id: doc.id,
       ...doc.data()
@@ -159,10 +108,16 @@ export const getCategories = async (): Promise<Category[]> => {
   }, 'Error getting categories');
 };
 
-export const addCategory = async (data: { name: string }): Promise<Category> => {
+export const addCategory = async (data: { 
+  name: string; 
+  subjectId: string;
+  description: string;
+}): Promise<Category> => {
   return handleFirebaseError(async () => {
     const categoryData = {
       name: data.name.trim(),
+      subjectId: data.subjectId,
+      description: data.description.trim(),
       createdAt: new Date().toISOString()
     };
 
@@ -175,32 +130,36 @@ export const addCategory = async (data: { name: string }): Promise<Category> => 
 };
 
 // Quiz functions
-export const uploadQuiz = async (userId: string, data: Omit<Quiz, 'id'>): Promise<void> => {
+export async function getAllQuizzes(): Promise<Quiz[]> {
+  try {
+    const quizRef = collection(db, 'quizzes');
+    const snapshot = await getDocs(quizRef);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Quiz));
+  } catch (error) {
+    console.error('Error getting all quizzes:', error);
+    return [];
+  }
+}
+
+// User Profile functions
+export const createUserProfile = async (userId: string, data: Partial<UserProfile>): Promise<boolean> => {
   return handleFirebaseError(async () => {
-    await addDoc(collection(db, 'quizzes'), {
-      ...data,
-      userId,
-      createdAt: new Date().toISOString()
-    });
-  }, 'Error uploading quiz');
+    const userRef = doc(db, 'users', userId);
+    await setDoc(userRef, data, { merge: true });
+    return true;
+  }, 'Error creating user profile');
 };
 
-export const getQuizzes = async (): Promise<Quiz[]> => {
+export const getUserProfile = async (userId: string): Promise<UserProfile | null> => {
   return handleFirebaseError(async () => {
-    const quizzesSnap = await getDocs(collection(db, 'quizzes'));
-    return quizzesSnap.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    } as Quiz));
-  }, 'Error getting quizzes');
-};
-
-export const saveQuizResult = async (userId: string, data: Omit<QuizResult, 'id'>): Promise<void> => {
-  return handleFirebaseError(async () => {
-    await addDoc(collection(db, 'quiz_results'), {
-      ...data,
-      userId,
-      timestamp: new Date().toISOString()
-    });
-  }, 'Error saving quiz result');
+    const userRef = doc(db, 'users', userId);
+    const userSnap = await getDoc(userRef);
+    
+    if (!userSnap.exists()) return null;
+    
+    return {
+      id: userSnap.id,
+      ...userSnap.data()
+    } as UserProfile;
+  }, 'Error getting user profile');
 };

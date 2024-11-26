@@ -1,7 +1,7 @@
 "use client";
 
 import Link from 'next/link';
-import { LayoutDashboard, User, Settings, Brain, Upload } from 'lucide-react';
+import { LayoutDashboard, User, Settings, Brain, BookOpen, Library } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 
 interface SidebarProps {
@@ -13,8 +13,8 @@ export function Sidebar({ isOpen }: SidebarProps) {
 
   const menuItems = [
     { href: '/', icon: LayoutDashboard, label: 'Dashboard' },
-    { href: '/quiz', icon: Brain, label: 'Quiz' },
-    { href: '/quiz/create', icon: Upload, label: 'Create Quiz' },
+    { href: '/quiz', icon: Brain, label: 'Take Quiz' },
+    { href: '/quiz-bank', icon: Library, label: 'Quiz Bank' },
     { href: '/profile', icon: User, label: 'Profile' },
     { href: '/settings', icon: Settings, label: 'Settings' },
   ];
@@ -24,7 +24,7 @@ export function Sidebar({ isOpen }: SidebarProps) {
       <div className="flex flex-col h-full">
         <div className="p-4">
           <h2 className={`text-2xl font-bold text-blue-600 ${!isOpen && 'hidden'}`}>
-            Dashboard
+            Quiz Dash
           </h2>
         </div>
         <nav className="flex-1 p-4">
@@ -36,7 +36,9 @@ export function Sidebar({ isOpen }: SidebarProps) {
                   <Link
                     href={item.href}
                     className={`flex items-center p-3 text-gray-700 hover:bg-blue-50 rounded-lg transition-colors ${
-                      pathname === item.href ? 'bg-blue-50' : ''
+                      pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href))
+                        ? 'bg-blue-50'
+                        : ''
                     }`}
                   >
                     <Icon className="h-5 w-5" />

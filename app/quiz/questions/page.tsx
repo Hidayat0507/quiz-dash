@@ -8,8 +8,11 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { useAuth } from '@/contexts/auth-context';
-import { getQuizzes, saveQuizResult, getCategories, type QuizQuestion, type Category } from '@/lib/db';
+import { getCategories, type Category } from '@/lib/db';
+import { getQuizzes, saveQuizResult, type QuizQuestion, type Quiz } from '@/lib/quiz';
 import { toast } from 'sonner';
+import { CheckCircle2, XCircle } from 'lucide-react';
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 export default function QuizQuestions() {
   const searchParams = useSearchParams();
@@ -22,14 +25,15 @@ export default function QuizQuestions() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [categoryName, setCategoryName] = useState<string>('');
+  const [showFeedback, setShowFeedback] = useState(false);
+  const [hasAnswered, setHasAnswered] = useState(false);
 
   const categoryId = searchParams.get('categoryId');
-  const difficulty = searchParams.get('difficulty');
 
   useEffect(() => {
     const loadQuestionsAndCategory = async () => {
-      if (!categoryId || !difficulty) {
-        toast.error('Missing quiz parameters');
+      if (!categoryId) {
+        toast.error('Missing category parameter');
         router.push('/quiz');
         return;
       }
@@ -41,23 +45,23 @@ export default function QuizQuestions() {
         ]);
 
         // Find category name
-        const category = categories.find(c => c.id === categoryId);
+        const category = categories.find((c: Category) => c.id === categoryId);
         if (category) {
           setCategoryName(category.name);
         }
 
-        const matchingQuizzes = quizzes.filter(
-          quiz => quiz.category === categoryId && quiz.difficulty === difficulty
+        const matchingQuizzes = quizzes.filter((quiz: Quiz) => 
+          quiz.categoryId === categoryId
         );
 
         if (!matchingQuizzes.length) {
-          toast.error('No questions available for this category and difficulty level');
+          toast.error('No questions available for this category');
           router.push('/quiz');
           return;
         }
 
         // Get all questions from matching quizzes
-        const allQuestions = matchingQuizzes.reduce<QuizQuestion[]>((acc, quiz) => {
+        const allQuestions = matchingQuizzes.reduce<QuizQuestion[]>((acc: QuizQuestion[], quiz: Quiz) => {
           return [...acc, ...quiz.questions];
         }, []);
 
@@ -65,8 +69,14 @@ export default function QuizQuestions() {
         const shuffledQuestions = allQuestions.sort(() => Math.random() - 0.5);
         setQuestions(shuffledQuestions);
       } catch (error) {
-        console.error('Error loading questions:', error);
-        toast.error('Failed to load questions');
+        if (process.env.NODE_ENV === 'development') {
+          console.error('Error loading questions:', error);
+        }
+        
+        toast.error(error instanceof Error 
+          ? `Failed to load questions: ${error.message}` 
+          : 'Failed to load questions'
+        );
         router.push('/quiz');
       } finally {
         setLoading(false);
@@ -74,11 +84,26 @@ export default function QuizQuestions() {
     };
 
     loadQuestionsAndCategory();
-  }, [categoryId, difficulty, router]);
+  }, [categoryId, router]);
 
-  const handleNext = () => {
+  const handleAnswerSelect = (answer: string) => {
+    if (!hasAnswered) {
+      setSelectedAnswer(answer);
+    }
+  };
+
+  const handleSubmitAnswer = () => {
     if (!selectedAnswer) {
       toast.error('Please select an answer');
+      return;
+    }
+    setHasAnswered(true);
+    setShowFeedback(true);
+  };
+
+  const handleNext = () => {
+    if (!selectedAnswer || !hasAnswered) {
+      toast.error('Please answer the question first');
       return;
     }
 
@@ -87,6 +112,8 @@ export default function QuizQuestions() {
       [currentQuestion]: selectedAnswer
     }));
     setSelectedAnswer('');
+    setShowFeedback(false);
+    setHasAnswered(false);
 
     if (currentQuestion + 1 < questions.length) {
       setCurrentQuestion(prev => prev + 1);
@@ -96,7 +123,7 @@ export default function QuizQuestions() {
   };
 
   const handleQuizComplete = async () => {
-    if (!user || !categoryId || !difficulty) {
+    if (!user || !categoryId) {
       toast.error('Session expired. Please login again.');
       router.push('/login');
       return;
@@ -113,13 +140,14 @@ export default function QuizQuestions() {
 
     setSubmitting(true);
     try {
-      await saveQuizResult(user.uid, {
-        category: categoryName, // Save category name instead of ID
-        difficulty,
+      await saveQuizResult({
+        categoryName,
         score,
         totalQuestions: questions.length,
         timestamp: new Date().toISOString(),
-        userId: user.uid
+        userId: user.uid,
+        subjectName: '',
+        quizId: ''
       });
 
       router.push(`/quiz/results?score=${score}&total=${questions.length}`);
@@ -136,7 +164,7 @@ export default function QuizQuestions() {
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
-          <p className="mt-2 text-gray-500">Loading questions...</p>
+          <p className="mt-4 text-gray-600">Loading questions...</p>
         </div>
       </div>
     );
@@ -144,78 +172,107 @@ export default function QuizQuestions() {
 
   if (!questions.length) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
+      <div className="flex items-center justify-center min-h-[60vh]">
         <div className="text-center">
-          <h2 className="text-xl font-semibold text-gray-800 mb-2">No Questions Available</h2>
-          <p className="text-gray-500 mb-4">There are no questions for this category and difficulty level yet.</p>
-          <Button onClick={() => router.push('/quiz')}>Back to Quiz Selection</Button>
+          <p className="text-gray-600">No questions available.</p>
         </div>
       </div>
     );
   }
 
-  const progress = ((currentQuestion + 1) / questions.length) * 100;
+  const currentQuestionData = questions[currentQuestion];
+  const isCorrect = selectedAnswer === currentQuestionData.correctAnswer;
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
+    <div className="max-w-3xl mx-auto p-6 space-y-6">
       <div className="space-y-2">
-        <div className="flex justify-between items-center">
-          <span className="text-sm font-medium">
+        <div className="flex items-center justify-between">
+          <h2 className="text-2xl font-semibold">{categoryName}</h2>
+          <span className="text-sm text-gray-500">
             Question {currentQuestion + 1} of {questions.length}
           </span>
-          <span className="text-sm font-medium">{Math.round(progress)}%</span>
         </div>
-        <Progress value={progress} className="w-full" />
+        <Progress value={(currentQuestion + 1) / questions.length * 100} />
       </div>
 
       <Card className="p-6">
         <div className="space-y-6">
-          <div className="flex justify-between items-center mb-4">
-            <div>
-              <span className="text-sm text-gray-500">Category:</span>
-              <span className="ml-2 font-medium">{categoryName}</span>
-            </div>
-            <div>
-              <span className="text-sm text-gray-500">Difficulty:</span>
-              <span className="ml-2 font-medium capitalize">{difficulty}</span>
-            </div>
-          </div>
+          <h3 className="text-lg font-medium">{currentQuestionData.question}</h3>
 
-          <h2 className="text-xl font-semibold">
-            {questions[currentQuestion].question}
-          </h2>
-
-          <RadioGroup
-            value={selectedAnswer}
-            onValueChange={setSelectedAnswer}
-            className="space-y-3"
+          <RadioGroup 
+            value={selectedAnswer} 
+            onValueChange={handleAnswerSelect}
+            className={hasAnswered ? 'pointer-events-none opacity-80' : ''}
           >
-            {questions[currentQuestion].options.map((option, index) => (
-              <div key={index} className="flex items-center space-x-2">
-                <RadioGroupItem value={option} id={`option-${index}`} />
-                <Label htmlFor={`option-${index}`}>{option}</Label>
-              </div>
-            ))}
+            <div className="space-y-3">
+              {currentQuestionData.options.map((option, index) => {
+                const optionLabel = String.fromCharCode(65 + index); // Convert 0-4 to A-E
+                return (
+                  <div key={index} className="flex items-center space-x-2">
+                    <RadioGroupItem value={option} id={`option-${index}`} disabled={hasAnswered} />
+                    <Label 
+                      htmlFor={`option-${index}`}
+                      className={
+                        hasAnswered
+                          ? option === currentQuestionData.correctAnswer
+                            ? 'text-green-600 font-medium'
+                            : option === selectedAnswer && option !== currentQuestionData.correctAnswer
+                              ? 'text-red-600'
+                              : ''
+                          : ''
+                      }
+                    >
+                      {optionLabel}. {option}
+                    </Label>
+                  </div>
+                );
+              })}
+            </div>
           </RadioGroup>
 
-          <Button
-            className="w-full"
-            onClick={handleNext}
-            disabled={!selectedAnswer || submitting}
-          >
-            {submitting ? (
-              <div className="flex items-center">
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                Saving...
+          {showFeedback && selectedAnswer && (
+            <Alert variant={isCorrect ? "default" : "destructive"} className="mt-4">
+              <div className="flex items-center space-x-2">
+                {isCorrect ? (
+                  <CheckCircle2 className="h-4 w-4 text-green-500" />
+                ) : (
+                  <XCircle className="h-4 w-4" />
+                )}
+                <AlertDescription>
+                  {isCorrect ? (
+                    "Correct! Well done!"
+                  ) : (
+                    <>
+                      Incorrect. The correct answer is: {currentQuestionData.correctAnswer}
+                      {currentQuestionData.explanation && (
+                        <p className="mt-2 text-sm">{currentQuestionData.explanation}</p>
+                      )}
+                    </>
+                  )}
+                </AlertDescription>
               </div>
-            ) : currentQuestion + 1 === questions.length ? (
-              'Finish Quiz'
-            ) : (
-              'Next Question'
-            )}
-          </Button>
+            </Alert>
+          )}
         </div>
       </Card>
+
+      <div className="flex justify-end space-x-4">
+        {!hasAnswered ? (
+          <Button
+            onClick={handleSubmitAnswer}
+            disabled={!selectedAnswer}
+          >
+            Submit Answer
+          </Button>
+        ) : (
+          <Button
+            onClick={handleNext}
+            disabled={submitting}
+          >
+            {currentQuestion + 1 === questions.length ? 'Finish Quiz' : 'Next Question'}
+          </Button>
+        )}
+      </div>
     </div>
   );
 }

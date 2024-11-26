@@ -5,7 +5,7 @@ import { Card } from "@/components/ui/card";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import { Activity, Award, Brain, Clock, Target, Trophy } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
-import { getQuizResults, type QuizResult } from '@/lib/db';
+import { getQuizResults, type QuizResult } from '@/lib/quiz';
 import { Button } from "@/components/ui/button";
 import { useRouter } from 'next/navigation';
 
@@ -25,13 +25,13 @@ export default function QuizPerformance() {
 
       try {
         const quizResults = await getQuizResults(user.uid);
-        setResults(quizResults.sort((a, b) => 
+        setResults(quizResults.sort((a: QuizResult, b: QuizResult) => 
           new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
         ));
         setError(null);
       } catch (error) {
         console.error('Error fetching results:', error);
-        setError('Failed to load quiz results. Please try again later.');
+        setError(error instanceof Error ? error.message : 'Failed to load quiz results. Please try again later.');
       } finally {
         setLoading(false);
       }
@@ -95,7 +95,7 @@ export default function QuizPerformance() {
 
   const categoryData = Object.entries(
     results.reduce((acc: { [key: string]: number }, result) => {
-      acc[result.category] = (acc[result.category] || 0) + 1;
+      acc[result.categoryName] = (acc[result.categoryName] || 0) + 1;
       return acc;
     }, {})
   ).map(([category, count]) => ({
@@ -242,7 +242,7 @@ export default function QuizPerformance() {
                   <td className="py-2">
                     {new Date(result.timestamp).toLocaleDateString()}
                   </td>
-                  <td className="py-2">{result.category}</td>
+                  <td className="py-2">{result.categoryName}</td>
                   <td className="py-2">{result.difficulty}</td>
                   <td className="py-2">
                     {result.score}/{result.totalQuestions}
