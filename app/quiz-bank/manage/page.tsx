@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -11,6 +12,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -22,9 +30,9 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Pencil, Trash2, Search, Settings } from 'lucide-react';
+import { ArrowLeft, Pencil, Trash2, Search, Settings, Save, Loader2, Eye } from 'lucide-react';
 import { getSubjects, getCategories, type Subject, type Category } from '@/lib/db';
-import { getQuizzes, deleteQuiz, type Quiz } from '@/lib/quiz';
+import { getQuizzes, deleteQuiz, updateQuiz, type Quiz } from '@/lib/quiz';
 import { toast } from 'sonner';
 
 export default function ManageQuizzesPage() {
@@ -33,10 +41,13 @@ export default function ManageQuizzesPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedSubject, setSelectedSubject] = useState<string>('');
-  const [selectedCategory, setSelectedCategory] = useState<string>('');
+  const [selectedSubject, setSelectedSubject] = useState<string>('all');
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [quizToDelete, setQuizToDelete] = useState<Quiz | null>(null);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingQuiz, setEditingQuiz] = useState<Quiz | null>(null);
+  const [saving, setSaving] = useState(false);
   const router = useRouter();
 
   const fetchData = async () => {
@@ -71,8 +82,8 @@ export default function ManageQuizzesPage() {
 
   const handleSubjectChange = async (value: string) => {
     setSelectedSubject(value);
-    setSelectedCategory('');
-    if (value) {
+    setSelectedCategory('all');
+    if (value && value !== 'all') {
       try {
         const fetchedCategories = await getCategories(value);
         setCategories(fetchedCategories);
@@ -84,7 +95,7 @@ export default function ManageQuizzesPage() {
   };
 
   const handleDeleteQuiz = async () => {
-    if (!quizToDelete) return;
+    if (!quizToDelete?.id) return;
 
     try {
       await deleteQuiz(quizToDelete.id);
@@ -99,10 +110,32 @@ export default function ManageQuizzesPage() {
     }
   };
 
+  const handleEditQuiz = (quiz: Quiz) => {
+    setEditingQuiz(quiz);
+    setEditDialogOpen(true);
+  };
+
+  const handleSaveQuiz = async () => {
+    if (!editingQuiz?.id) return;
+
+    setSaving(true);
+    try {
+      await updateQuiz(editingQuiz.id, editingQuiz);
+      toast.success('Quiz updated successfully');
+      fetchData(); // Refresh the quiz list
+      setEditDialogOpen(false);
+    } catch (error) {
+      console.error('Error updating quiz:', error);
+      toast.error('Failed to update quiz');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const filteredQuizzes = quizzes.filter(quiz => {
     const matchesSearch = quiz.title.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesSubject = !selectedSubject || selectedSubject === 'all' || quiz.subjectId === selectedSubject;
-    const matchesCategory = !selectedCategory || selectedCategory === 'all' || quiz.category === selectedCategory;
+    const matchesSubject = selectedSubject === 'all' || quiz.subjectId === selectedSubject;
+    const matchesCategory = selectedCategory === 'all' || quiz.categoryId === selectedCategory;
     return matchesSearch && matchesSubject && matchesCategory;
   });
 
@@ -172,7 +205,7 @@ export default function ManageQuizzesPage() {
               <Select
                 value={selectedCategory}
                 onValueChange={setSelectedCategory}
-                disabled={!selectedSubject}
+                disabled={!selectedSubject || selectedSubject === 'all'}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="All Categories" />
@@ -197,7 +230,7 @@ export default function ManageQuizzesPage() {
             ) : (
               filteredQuizzes.map((quiz) => {
                 const subject = subjects.find(s => s.id === quiz.subjectId);
-                const category = categories.find(c => c.id === quiz.category);
+                const category = categories.find(c => c.id === quiz.categoryId);
                 
                 return (
                   <div
@@ -207,6 +240,8 @@ export default function ManageQuizzesPage() {
                     <div className="space-y-1">
                       <h3 className="font-medium">{quiz.title}</h3>
                       <div className="flex items-center space-x-2 text-sm text-gray-500">
+                        <span>{subject?.name}</span>
+                        <span>•</span>
                         <span>{category?.name}</span>
                         <span>•</span>
                         <span>{quiz.questions.length} questions</span>
@@ -216,7 +251,14 @@ export default function ManageQuizzesPage() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => router.push(`/quiz-bank/${quiz.id}/edit`)}
+                        onClick={() => router.push(`/quiz-bank/${quiz.id}/questions`)}
+                      >
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleEditQuiz(quiz)}
                       >
                         <Pencil className="h-4 w-4" />
                       </Button>
@@ -240,12 +282,85 @@ export default function ManageQuizzesPage() {
         </div>
       </Card>
 
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Quiz</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Title</Label>
+              <Input
+                value={editingQuiz?.title || ''}
+                onChange={(e) => setEditingQuiz(prev => prev ? { ...prev, title: e.target.value } : null)}
+                placeholder="Quiz title"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Subject</Label>
+              <Select
+                value={editingQuiz?.subjectId || ''}
+                onValueChange={(value) => setEditingQuiz(prev => prev ? { ...prev, subjectId: value } : null)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select subject" />
+                </SelectTrigger>
+                <SelectContent>
+                  {subjects.map((subject) => (
+                    <SelectItem key={subject.id} value={subject.id}>
+                      {subject.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Category</Label>
+              <Select
+                value={editingQuiz?.categoryId || ''}
+                onValueChange={(value) => setEditingQuiz(prev => prev ? { ...prev, categoryId: value } : null)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select category" />
+                </SelectTrigger>
+                <SelectContent>
+                  {categories.map((category) => (
+                    <SelectItem key={category.id} value={category.id}>
+                      {category.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveQuiz} disabled={saving}>
+              {saving ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4 mr-2" />
+                  Save Changes
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Are you sure you want to delete this quiz?</AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete the quiz &ldquo;{quizToDelete?.title}&rdquo; and all its questions.
+              This action cannot be undone. This will permanently delete the quiz
+              {quizToDelete?.title} and all its questions.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
-import { Plus, X, Loader2, BookOpen } from 'lucide-react';
+import { Plus, X, Loader2, Check } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { 
   addCategory, 
@@ -22,16 +22,27 @@ import { createQuiz, type Quiz, type QuizQuestion } from '@/lib/quiz';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 
+interface QuestionForm {
+  question: string;
+  options: string[];
+  correctAnswer: string;
+  explanation: string;
+}
+
+const initialQuestionForm: QuestionForm = {
+  question: '',
+  options: ['', '', '', '', ''],
+  correctAnswer: '',
+  explanation: ''
+};
+
 const QuizUpload = () => {
   const { user } = useAuth();
   const router = useRouter();
   const [subject, setSubject] = useState('');
   const [category, setCategory] = useState('');
   const [questions, setQuestions] = useState<QuizQuestion[]>([]);
-  const [currentQuestion, setCurrentQuestion] = useState('');
-  const [options, setOptions] = useState(['', '', '', '', '']);
-  const [correctAnswer, setCorrectAnswer] = useState('');
-  const [explanation, setExplanation] = useState('');
+  const [questionForm, setQuestionForm] = useState<QuestionForm>(initialQuestionForm);
   
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -144,49 +155,51 @@ const QuizUpload = () => {
   };
 
   const handleOptionChange = (index: number, value: string) => {
-    const newOptions = [...options];
+    const newOptions = [...questionForm.options];
     newOptions[index] = value;
-    setOptions(newOptions);
+    setQuestionForm(prev => ({
+      ...prev,
+      options: newOptions
+    }));
   };
 
   const addQuestion = () => {
-    if (!currentQuestion.trim()) {
+    if (!questionForm.question.trim()) {
       toast.error('Please enter a question');
       return;
     }
 
-    const nonEmptyOptions = options.filter(opt => opt.trim());
+    const nonEmptyOptions = questionForm.options.filter(opt => opt.trim());
     if (nonEmptyOptions.length < 2) {
       toast.error('Please provide at least 2 options');
       return;
     }
 
-    if (!correctAnswer) {
+    if (!questionForm.correctAnswer) {
       toast.error('Please select the correct answer');
       return;
     }
 
-    if (!options.includes(correctAnswer)) {
+    if (!questionForm.options.includes(questionForm.correctAnswer)) {
       toast.error('Correct answer must be one of the options');
       return;
     }
 
-    setQuestions([...questions, {
-      question: currentQuestion,
-      options: [...options],
-      correctAnswer,
-      explanation: explanation.trim() || null
-    }]);
+    const newQuestion: QuizQuestion = {
+      question: questionForm.question,
+      options: questionForm.options.filter(opt => opt.trim()),
+      correctAnswer: questionForm.correctAnswer,
+      explanation: questionForm.explanation.trim() || null
+    };
 
-    // Reset form
-    setCurrentQuestion('');
-    setOptions(['', '', '', '', '']);
-    setCorrectAnswer('');
-    setExplanation('');
+    setQuestions(prev => [...prev, newQuestion]);
+    setQuestionForm(initialQuestionForm);
+    toast.success('Question added successfully');
   };
 
   const removeQuestion = (index: number) => {
     setQuestions(questions.filter((_, i) => i !== index));
+    toast.success('Question removed');
   };
 
   const handleSubmit = async () => {
@@ -202,11 +215,12 @@ const QuizUpload = () => {
 
     setSaving(true);
     try {
+      const categoryObj = categories.find(c => c.id === category);
       const quizData: Omit<Quiz, 'id'> = {
-        title: `${subject} Quiz`,
+        title: `${categoryObj?.name || 'New'} Quiz`,
         subjectId: subject,
         categoryId: category,
-        categoryName: categories.find(c => c.id === category)?.name || '',
+        categoryName: categoryObj?.name || '',
         questions,
         createdAt: new Date().toISOString(),
         userId: user?.uid || '',
@@ -357,95 +371,143 @@ const QuizUpload = () => {
           </div>
         </Card>
 
-        <div className="space-y-4">
-          {questions.map((question, index) => (
-            <Card key={index} className="p-6">
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-medium">Question {index + 1}</h3>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="text-red-600 hover:text-red-700"
-                    onClick={() => removeQuestion(index)}
-                  >
-                    <X className="w-4 h-4" />
-                  </Button>
-                </div>
+        <Card className="p-6">
+          <div className="space-y-4">
+            <h2 className="text-lg font-semibold">Add New Question</h2>
+            
+            <div className="space-y-2">
+              <Label>Question Text</Label>
+              <Textarea
+                value={questionForm.question}
+                onChange={(e) => setQuestionForm(prev => ({ ...prev, question: e.target.value }))}
+                placeholder="Enter your question"
+                className="min-h-[100px]"
+              />
+            </div>
 
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Question Text</label>
-                  <Textarea
-                    value={question.question}
-                    onChange={(e) => setCurrentQuestion(e.target.value)}
-                    placeholder="Enter the question"
-                    className="min-h-[100px]"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Options</label>
-                  <div className="space-y-2">
-                    {options.map((option, optionIndex) => (
-                      <div key={optionIndex} className="flex items-center space-x-2">
-                        <span className="text-sm font-medium w-6">
-                          {String.fromCharCode(65 + optionIndex)}.
-                        </span>
-                        <Input
-                          value={option}
-                          onChange={(e) => handleOptionChange(optionIndex, e.target.value)}
-                          placeholder={`Option ${String.fromCharCode(65 + optionIndex)}`}
-                        />
-                      </div>
-                    ))}
+            <div className="space-y-2">
+              <Label>Options</Label>
+              <div className="space-y-2">
+                {questionForm.options.map((option, index) => (
+                  <div key={index} className="flex items-center space-x-2">
+                    <span className="text-sm font-medium w-6">
+                      {String.fromCharCode(65 + index)}.
+                    </span>
+                    <Input
+                      value={option}
+                      onChange={(e) => handleOptionChange(index, e.target.value)}
+                      placeholder={`Option ${String.fromCharCode(65 + index)}`}
+                    />
                   </div>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Correct Answer</label>
-                  <Select value={correctAnswer} onValueChange={setCorrectAnswer}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select correct answer" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {options.filter(option => option.trim() !== '').map((option, index) => (
-                        <SelectItem key={index} value={option}>
-                          {option}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Explanation (Optional)</label>
-                  <Textarea
-                    value={explanation || ''}
-                    onChange={(e) => setExplanation(e.target.value)}
-                    placeholder="Explain why this answer is correct"
-                  />
-                </div>
+                ))}
               </div>
-            </Card>
-          ))}
+            </div>
 
-          <Button
-            onClick={addQuestion}
-            variant="outline"
-            className="w-full"
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            Add Question
-          </Button>
-        </div>
+            <div className="space-y-2">
+              <Label>Correct Answer</Label>
+              <Select 
+                value={questionForm.correctAnswer}
+                onValueChange={(value) => setQuestionForm(prev => ({ ...prev, correctAnswer: value }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select correct answer" />
+                </SelectTrigger>
+                <SelectContent>
+                  {questionForm.options.filter(option => option.trim() !== '').map((option, index) => (
+                    <SelectItem key={index} value={option}>
+                      {option}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Explanation (Optional)</Label>
+              <Textarea
+                value={questionForm.explanation}
+                onChange={(e) => setQuestionForm(prev => ({ ...prev, explanation: e.target.value }))}
+                placeholder="Explain why this is the correct answer"
+              />
+            </div>
+
+            <Button onClick={addQuestion} className="w-full">
+              <Plus className="w-4 h-4 mr-2" />
+              Add Question
+            </Button>
+          </div>
+        </Card>
+
+        {questions.length > 0 && (
+          <Card className="p-6">
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold">Added Questions</h2>
+                <span className="text-sm text-gray-500">Total: {questions.length}</span>
+              </div>
+              
+              <div className="space-y-4">
+                {questions.map((question, index) => (
+                  <Card key={index} className="p-4">
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <h3 className="font-medium">Question {index + 1}</h3>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-red-600 hover:text-red-700"
+                          onClick={() => removeQuestion(index)}
+                        >
+                          <X className="w-4 h-4" />
+                        </Button>
+                      </div>
+                      <p>{question.question}</p>
+                      <div className="ml-4 space-y-1">
+                        {question.options.map((option, optIndex) => (
+                          <div
+                            key={optIndex}
+                            className={`flex items-center space-x-2 ${
+                              option === question.correctAnswer ? 'text-green-600 font-medium' : ''
+                            }`}
+                          >
+                            <span>{String.fromCharCode(65 + optIndex)}.</span>
+                            <span>{option}</span>
+                            {option === question.correctAnswer && (
+                              <Check className="w-4 h-4" />
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                      {question.explanation && (
+                        <div className="mt-2 text-sm text-gray-600">
+                          <p className="font-medium">Explanation:</p>
+                          <p>{question.explanation}</p>
+                        </div>
+                      )}
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          </Card>
+        )}
 
         <Button
           onClick={handleSubmit}
-          disabled={saving}
+          disabled={saving || questions.length < 5}
           className="w-full"
         >
-          {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Check className="w-4 h-4 mr-2" />}
-          {saving ? 'Saving...' : 'Save Quiz'}
+          {saving ? (
+            <>
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              Saving...
+            </>
+          ) : (
+            <>
+              <Check className="w-4 h-4 mr-2" />
+              Save Quiz
+            </>
+          )}
         </Button>
       </div>
     </div>

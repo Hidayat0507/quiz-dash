@@ -3,17 +3,15 @@
 import { useState, useEffect } from 'react';
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { useRouter } from 'next/navigation';
-import { Plus, Upload, BookOpen, MoreVertical, Eye, Pencil, Trash2, Settings } from 'lucide-react';
-import { getSubjects, getCategories, type Subject, type Category } from '@/lib/db';
-import { getQuizzes, deleteQuiz, type Quiz } from '@/lib/quiz';
-import { toast } from 'sonner';
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,6 +22,24 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useRouter } from 'next/navigation';
+import { Plus, Upload, BookOpen, MoreVertical, Eye, Pencil, Trash2, Settings, Save, Loader2 } from 'lucide-react';
+import { getSubjects, getCategories, type Subject, type Category } from '@/lib/db';
+import { getQuizzes, deleteQuiz, updateQuiz, type Quiz } from '@/lib/quiz';
+import { toast } from 'sonner';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 export default function QuizBankPage() {
   const [quizzes, setQuizzes] = useState<Quiz[]>([]);
@@ -32,6 +48,9 @@ export default function QuizBankPage() {
   const [loading, setLoading] = useState(true);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [quizToDelete, setQuizToDelete] = useState<Quiz | null>(null);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingQuiz, setEditingQuiz] = useState<Quiz | null>(null);
+  const [saving, setSaving] = useState(false);
   const router = useRouter();
 
   const fetchData = async () => {
@@ -43,7 +62,8 @@ export default function QuizBankPage() {
       setQuizzes(fetchedQuizzes);
       setSubjects(fetchedSubjects);
 
-      const subjectIds = [...new Set(fetchedQuizzes.map(quiz => quiz.subjectId))];
+      // Fix: Convert Set to Array using Array.from() and spread operator
+      const subjectIds = Array.from(new Set(fetchedQuizzes.map(quiz => quiz.subjectId)));
       const categoriesPromises = subjectIds.map(id => getCategories(id));
       const fetchedCategories = await Promise.all(categoriesPromises);
       const allCategories = fetchedCategories.flat();
@@ -61,7 +81,7 @@ export default function QuizBankPage() {
   }, []);
 
   const handleDeleteQuiz = async () => {
-    if (!quizToDelete) return;
+    if (!quizToDelete?.id) return;
 
     try {
       await deleteQuiz(quizToDelete.id);
@@ -73,6 +93,28 @@ export default function QuizBankPage() {
     } finally {
       setQuizToDelete(null);
       setDeleteDialogOpen(false);
+    }
+  };
+
+  const handleEditQuiz = (quiz: Quiz) => {
+    setEditingQuiz(quiz);
+    setEditDialogOpen(true);
+  };
+
+  const handleSaveQuiz = async () => {
+    if (!editingQuiz?.id) return;
+
+    setSaving(true);
+    try {
+      await updateQuiz(editingQuiz.id, editingQuiz);
+      toast.success('Quiz updated successfully');
+      fetchData(); // Refresh the quiz list
+      setEditDialogOpen(false);
+    } catch (error) {
+      console.error('Error updating quiz:', error);
+      toast.error('Failed to update quiz');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -151,11 +193,11 @@ export default function QuizBankPage() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => router.push(`/quiz-bank/${quiz.id}`)}>
+                        <DropdownMenuItem onClick={() => router.push(`/quiz-bank/${quiz.id}/questions`)}>
                           <Eye className="mr-2 h-4 w-4" />
-                          View
+                          View Questions
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => router.push(`/quiz-bank/${quiz.id}/edit`)}>
+                        <DropdownMenuItem onClick={() => handleEditQuiz(quiz)}>
                           <Pencil className="mr-2 h-4 w-4" />
                           Edit
                         </DropdownMenuItem>
@@ -195,13 +237,85 @@ export default function QuizBankPage() {
         </div>
       )}
 
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Quiz</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Title</Label>
+              <Input
+                value={editingQuiz?.title || ''}
+                onChange={(e) => setEditingQuiz(prev => prev ? { ...prev, title: e.target.value } : null)}
+                placeholder="Quiz title"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Subject</Label>
+              <Select
+                value={editingQuiz?.subjectId || ''}
+                onValueChange={(value) => setEditingQuiz(prev => prev ? { ...prev, subjectId: value } : null)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select subject" />
+                </SelectTrigger>
+                <SelectContent>
+                  {subjects.map((subject) => (
+                    <SelectItem key={subject.id} value={subject.id}>
+                      {subject.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Category</Label>
+              <Select
+                value={editingQuiz?.categoryId || ''}
+                onValueChange={(value) => setEditingQuiz(prev => prev ? { ...prev, categoryId: value } : null)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select category" />
+                </SelectTrigger>
+                <SelectContent>
+                  {categories.map((category) => (
+                    <SelectItem key={category.id} value={category.id}>
+                      {category.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveQuiz} disabled={saving}>
+              {saving ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4 mr-2" />
+                  Save Changes
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Are you sure you want to delete this quiz?</AlertDialogTitle>
             <AlertDialogDescription>
               This action cannot be undone. This will permanently delete the quiz
-              "{quizToDelete?.title}" and all its questions.
+              {quizToDelete?.title} and all its questions.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
