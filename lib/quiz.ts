@@ -11,10 +11,10 @@ import {
   doc,
   getDoc,
   deleteDoc,
-  updateDoc,
-  limit
+  updateDoc
 } from 'firebase/firestore';
 
+// Core quiz interfaces
 export interface QuizQuestion {
   question: string;
   options: string[];
@@ -45,21 +45,6 @@ export interface QuizResult {
   quizId: string;
 }
 
-export interface QuizProgress {
-  id?: string;
-  userId: string;
-  quizId: string;
-  categoryId: string;
-  answeredQuestions: {
-    questionId: string;
-    answer: string;
-    correct: boolean;
-  }[];
-  completed: boolean;
-  startedAt: string;
-  lastUpdated: string;
-}
-
 const handleFirebaseError = async <T>(operation: () => Promise<T>, errorMessage: string): Promise<T> => {
   try {
     return await operation();
@@ -69,7 +54,7 @@ const handleFirebaseError = async <T>(operation: () => Promise<T>, errorMessage:
   }
 };
 
-// Get all quizzes
+// Quiz CRUD operations
 export const getQuizzes = async (): Promise<Quiz[]> => {
   return handleFirebaseError(async () => {
     const q = query(
@@ -84,7 +69,6 @@ export const getQuizzes = async (): Promise<Quiz[]> => {
   }, 'Error getting quizzes');
 };
 
-// Get a single quiz by ID
 export const getQuiz = async (id: string): Promise<Quiz | null> => {
   return handleFirebaseError(async () => {
     const docRef = doc(db, 'quizzes', id);
@@ -97,7 +81,6 @@ export const getQuiz = async (id: string): Promise<Quiz | null> => {
   }, 'Error getting quiz');
 };
 
-// Create a new quiz
 export const createQuiz = async (quiz: Omit<Quiz, 'id'>): Promise<string> => {
   return handleFirebaseError(async () => {
     const docRef = await addDoc(collection(db, 'quizzes'), quiz);
@@ -105,7 +88,6 @@ export const createQuiz = async (quiz: Omit<Quiz, 'id'>): Promise<string> => {
   }, 'Error creating quiz');
 };
 
-// Update an existing quiz
 export const updateQuiz = async (id: string, quiz: Partial<Omit<Quiz, 'id'>>): Promise<void> => {
   return handleFirebaseError(async () => {
     const docRef = doc(db, 'quizzes', id);
@@ -113,7 +95,6 @@ export const updateQuiz = async (id: string, quiz: Partial<Omit<Quiz, 'id'>>): P
   }, 'Error updating quiz');
 };
 
-// Delete a quiz
 export const deleteQuiz = async (id: string): Promise<void> => {
   return handleFirebaseError(async () => {
     const docRef = doc(db, 'quizzes', id);
@@ -121,7 +102,7 @@ export const deleteQuiz = async (id: string): Promise<void> => {
   }, 'Error deleting quiz');
 };
 
-// Get quizzes by subject
+// Quiz filtering and querying
 export const getQuizzesBySubject = async (subjectId: string): Promise<Quiz[]> => {
   return handleFirebaseError(async () => {
     const q = query(
@@ -137,7 +118,7 @@ export const getQuizzesBySubject = async (subjectId: string): Promise<Quiz[]> =>
   }, 'Error getting quizzes by subject');
 };
 
-// Get quiz results for a user
+// Quiz results management
 export const getQuizResults = async (userId: string): Promise<QuizResult[]> => {
   return handleFirebaseError(async () => {
     try {
@@ -164,7 +145,6 @@ export const getQuizResults = async (userId: string): Promise<QuizResult[]> => {
   }, 'Error getting quiz results');
 };
 
-// Save a quiz result
 export const saveQuizResult = async (data: Omit<QuizResult, 'id'>): Promise<string> => {
   return handleFirebaseError(async () => {
     const docRef = await addDoc(collection(db, 'quiz_results'), {
@@ -175,7 +155,6 @@ export const saveQuizResult = async (data: Omit<QuizResult, 'id'>): Promise<stri
   }, 'Error saving quiz result');
 };
 
-// Get quiz results for a specific quiz
 export const getQuizResultsByQuiz = async (quizId: string): Promise<QuizResult[]> => {
   return handleFirebaseError(async () => {
     const q = query(
@@ -190,81 +169,4 @@ export const getQuizResultsByQuiz = async (quizId: string): Promise<QuizResult[]
       ...doc.data()
     } as QuizResult));
   }, 'Error getting quiz results');
-};
-
-// Get quiz progress
-export const getQuizProgress = async (userId: string, categoryId: string): Promise<QuizProgress | null> => {
-  return handleFirebaseError(async () => {
-    const q = query(
-      collection(db, 'quiz_progress'),
-      where('userId', '==', userId),
-      where('categoryId', '==', categoryId),
-      where('completed', '==', false),
-      orderBy('startedAt', 'desc'),
-      limit(1)
-    );
-    
-    const snapshot = await getDocs(q);
-    if (snapshot.empty) return null;
-    
-    return {
-      id: snapshot.docs[0].id,
-      ...snapshot.docs[0].data()
-    } as QuizProgress;
-  }, 'Error getting quiz progress');
-};
-
-// Create new quiz progress
-export const createQuizProgress = async (
-  userId: string,
-  quizId: string,
-  categoryId: string
-): Promise<QuizProgress> => {
-  return handleFirebaseError(async () => {
-    const data: Omit<QuizProgress, 'id'> = {
-      userId,
-      quizId,
-      categoryId,
-      answeredQuestions: [],
-      completed: false,
-      startedAt: new Date().toISOString(),
-      lastUpdated: new Date().toISOString()
-    };
-
-    const docRef = await addDoc(collection(db, 'quiz_progress'), data);
-    return {
-      id: docRef.id,
-      ...data
-    };
-  }, 'Error creating quiz progress');
-};
-
-// Update quiz progress
-export const updateQuizProgress = async (id: string, data: Partial<QuizProgress>): Promise<void> => {
-  return handleFirebaseError(async () => {
-    const docRef = doc(db, 'quiz_progress', id);
-    await updateDoc(docRef, {
-      ...data,
-      lastUpdated: new Date().toISOString()
-    });
-  }, 'Error updating quiz progress');
-};
-
-// Get unanswered questions
-export const getUnansweredQuestions = (quiz: Quiz, progress: QuizProgress): QuizQuestion[] => {
-  const answeredQuestionIds = new Set(progress.answeredQuestions.map(q => q.questionId));
-  return quiz.questions.filter((_, index) => !answeredQuestionIds.has(index.toString()));
-};
-
-// Get quiz statistics
-export const getQuizStats = (quiz: Quiz, progress: QuizProgress): {
-  totalQuestions: number;
-  answeredQuestions: number;
-  remainingQuestions: number;
-} => {
-  return {
-    totalQuestions: quiz.questions.length,
-    answeredQuestions: progress.answeredQuestions.length,
-    remainingQuestions: quiz.questions.length - progress.answeredQuestions.length
-  };
 };

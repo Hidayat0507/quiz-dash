@@ -1,98 +1,129 @@
 "use client";
 
-import { db } from './firebase';
-import { 
-  collection, 
-  addDoc, 
-  getDocs, 
-  query, 
-  where,
-  orderBy,
-  doc,
-  updateDoc,
-  limit
-} from 'firebase/firestore';
-import { Quiz } from './quiz';
+import { Quiz, QuizQuestion } from './quiz';
 
-export interface QuizProgress {
-  id?: string;
-  userId: string;
-  quizId: string;
-  categoryId: string;
-  answeredQuestions: {
-    questionId: string;
+// Basic quiz state interface
+export interface QuizState {
+  currentQuestion: number;
+  answers: {
     answer: string;
-    correct: boolean;
+    isCorrect: boolean;
   }[];
-  questionOrder?: number[];
-  completed: boolean;
-  startedAt: string;
-  lastUpdated: string;
+  categoryId?: string;
+  lastAnswered?: {
+    answer: string;
+    showFeedback: boolean;
+  };
 }
 
-const handleFirebaseError = async <T>(operation: () => Promise<T>, errorMessage: string): Promise<T> => {
+// Storage key for quiz state
+const QUIZ_STATE_KEY = 'quiz_state';
+
+// Initialize quiz state
+export const initializeQuiz = (categoryId: string): QuizState => {
+  // Try to load saved state first
+  const savedState = loadQuizState();
+  if (savedState && savedState.categoryId === categoryId) {
+    return savedState;
+  }
+
+  // If no saved state or different category, create new state
+  return {
+    currentQuestion: 0,
+    answers: [],
+    categoryId
+  };
+};
+
+// Save quiz state to localStorage
+export const saveQuizState = (state: QuizState): void => {
   try {
-    return await operation();
-  } catch (error: any) {
-    console.error(errorMessage, error);
-    throw error;
+    localStorage.setItem(QUIZ_STATE_KEY, JSON.stringify(state));
+  } catch (error) {
+    console.error('Failed to save quiz state:', error);
   }
 };
 
-// Get quiz progress
-export const getQuizProgress = async (userId: string, categoryId: string): Promise<QuizProgress | null> => {
-  return handleFirebaseError(async () => {
-    const q = query(
-      collection(db, 'quiz_progress'),
-      where('userId', '==', userId),
-      where('categoryId', '==', categoryId),
-      where('completed', '==', false),
-      orderBy('startedAt', 'desc'),
-      limit(1)
-    );
-    
-    const snapshot = await getDocs(q);
-    if (snapshot.empty) return null;
-    
-    return {
-      id: snapshot.docs[0].id,
-      ...snapshot.docs[0].data()
-    } as QuizProgress;
-  }, 'Error getting quiz progress');
+// Load quiz state from localStorage
+export const loadQuizState = (): QuizState | null => {
+  try {
+    const saved = localStorage.getItem(QUIZ_STATE_KEY);
+    return saved ? JSON.parse(saved) : null;
+  } catch (error) {
+    console.error('Failed to load quiz state:', error);
+    return null;
+  }
 };
 
-// Create new quiz progress
-export const createQuizProgress = async (
-  userId: string,
-  quizId: string,
-  categoryId: string
-): Promise<QuizProgress> => {
-  return handleFirebaseError(async () => {
-    const data: Omit<QuizProgress, 'id'> = {
-      userId,
-      quizId,
-      categoryId,
-      answeredQuestions: [],
-      completed: false,
-      startedAt: new Date().toISOString(),
-      lastUpdated: new Date().toISOString()
-    };
-
-    const docRef = await addDoc(collection(db, 'quiz_progress'), data);
-    return {
-      id: docRef.id,
-      ...data
-    };
-  }, 'Error creating quiz progress');
+// Clear saved quiz state
+export const clearQuizState = (): void => {
+  localStorage.removeItem(QUIZ_STATE_KEY);
 };
 
-// Update quiz progress
-export const updateQuizProgress = async (id: string, data: Partial<QuizProgress>): Promise<void> => {
-  return handleFirebaseError(async () => {
-    const docRef = doc(db, 'quiz_progress', id);
-    await updateDoc(docRef, {
-      ...data,
-      lastUpdated: new Date().toISOString()
-    });
-  }, 'Error updating quiz progress');
+// Save current answer state (for refresh handling)
+export const saveCurrentAnswer = (
+  state: QuizState,
+  answer: string,
+  showFeedback: boolean
+): QuizState => {
+  const newState = {
+    ...state,
+    lastAnswered: {
+      answer,
+      showFeedback
+    }
+  };
+  saveQuizState(newState);
+  return newState;
+};
+
+// Get unanswered questions
+export const getUnansweredQuestions = (quiz: Quiz, state: QuizState): QuizQuestion[] => {
+  const answeredIndices = new Set(
+    state.answers.map((_, index) => index)
+  );
+  
+  return quiz.questions.filter((_, index) => !answeredIndices.has(index));
+};
+
+// Get next unanswered question
+export const getNextUnansweredQuestion = (quiz: Quiz, state: QuizState): QuizQuestion | null => {
+  const unanswered = getUnansweredQuestions(quiz, state);
+  return unanswered.length > 0 ? unanswered[0] : null;
+};
+
+// Handle answer submission
+export const submitAnswer = (
+  state: QuizState,
+  answer: string,
+  correctAnswer: string
+): QuizState => {
+  const newState = {
+    ...state,
+    currentQuestion: state.currentQuestion + 1,
+    answers: [
+      ...state.answers,
+      {
+        answer,
+        isCorrect: answer === correctAnswer
+      }
+    ],
+    lastAnswered: undefined // Clear last answered state after submission
+  };
+
+  saveQuizState(newState);
+  return newState;
+};
+
+// Get current question
+export const getCurrentQuestion = (quiz: Quiz, state: QuizState): QuizQuestion | null => {
+  if (state.currentQuestion >= quiz.questions.length) {
+    return null;
+  }
+  return quiz.questions[state.currentQuestion];
+};
+
+// Calculate score
+export const calculateScore = (state: QuizState): number => {
+  return state.answers.filter(a => a.isCorrect).length;
 };

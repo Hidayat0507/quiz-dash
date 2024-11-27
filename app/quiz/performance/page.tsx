@@ -243,7 +243,6 @@ export default function QuizPerformance() {
                     {new Date(result.timestamp).toLocaleDateString()}
                   </td>
                   <td className="py-2">{result.categoryName}</td>
-                  <td className="py-2">{result.difficulty}</td>
                   <td className="py-2">
                     {result.score}/{result.totalQuestions}
                   </td>
