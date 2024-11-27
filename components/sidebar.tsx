@@ -20,10 +20,18 @@ export function Sidebar({ isOpen }: SidebarProps) {
   ];
 
   return (
-    <div className={`bg-white shadow-lg ${isOpen ? 'w-64' : 'w-20'} transition-all duration-300`}>
+    <div className={`
+      h-full bg-white shadow-lg
+      ${isOpen ? 'w-64' : 'w-20'}
+      md:w-64
+      transition-all duration-300
+    `}>
       <div className="flex flex-col h-full">
         <div className="p-4">
-          <h2 className={`text-2xl font-bold text-blue-600 ${!isOpen && 'hidden'}`}>
+          <h2 className={`
+            text-2xl font-bold text-blue-600
+            ${!isOpen && 'hidden md:block'}
+          `}>
             Quiz Dash
           </h2>
         </div>
@@ -31,18 +39,27 @@ export function Sidebar({ isOpen }: SidebarProps) {
           <ul className="space-y-2">
             {menuItems.map((item) => {
               const Icon = item.icon;
+              const isActive = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href));
+              
               return (
                 <li key={item.href}>
                   <Link
                     href={item.href}
-                    className={`flex items-center p-3 text-gray-700 hover:bg-blue-50 rounded-lg transition-colors ${
-                      pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href))
-                        ? 'bg-blue-50'
-                        : ''
-                    }`}
+                    className={`
+                      flex items-center p-3 rounded-lg transition-colors
+                      ${isActive ? 'bg-blue-50 text-blue-600' : 'text-gray-700 hover:bg-blue-50'}
+                    `}
                   >
-                    <Icon className="h-5 w-5" />
-                    <span className={`ml-3 ${!isOpen && 'hidden'}`}>{item.label}</span>
+                    <Icon className={`
+                      h-5 w-5
+                      ${isActive ? 'text-blue-600' : 'text-gray-500'}
+                    `} />
+                    <span className={`
+                      ml-3
+                      ${!isOpen && 'hidden md:inline'}
+                    `}>
+                      {item.label}
+                    </span>
                   </Link>
                 </li>
               );

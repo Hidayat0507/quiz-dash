@@ -26,6 +26,18 @@ function MainLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
 
   useEffect(() => {
+    const handleResize = () => {
+      setIsSidebarOpen(window.innerWidth >= 768); // 768px is the md breakpoint
+    };
+
+    handleResize();
+
+    window.addEventListener('resize', handleResize);
+
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  useEffect(() => {
     if (!loading && !user && !['/login', '/signup'].includes(pathname)) {
       router.push('/login');
     }
@@ -58,14 +70,28 @@ function MainLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-screen bg-gray-100">
-      <Sidebar isOpen={isSidebarOpen} />
+      {isSidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 z-20 md:hidden"
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
+
+      <div className={`
+        fixed md:static inset-y-0 left-0 z-30 
+        transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+        md:translate-x-0 transition-transform duration-300 ease-in-out
+      `}>
+        <Sidebar isOpen={isSidebarOpen} />
+      </div>
 
       <div className="flex-1 overflow-auto">
         <header className="bg-white shadow-sm">
-          <div className="flex items-center justify-between px-6 py-4">
+          <div className="flex items-center justify-between px-4 py-4">
             <button
               onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-              className="p-2 rounded-lg hover:bg-gray-100"
+              className="p-2 rounded-lg hover:bg-gray-100 md:hidden"
+              aria-label="Toggle Menu"
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />

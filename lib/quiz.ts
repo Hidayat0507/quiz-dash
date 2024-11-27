@@ -12,7 +12,7 @@ import {
   getDoc,
   deleteDoc,
   updateDoc,
-  arrayUnion
+  limit
 } from 'firebase/firestore';
 
 export interface QuizQuestion {
@@ -43,6 +43,21 @@ export interface QuizResult {
   userId: string;
   subjectName: string;
   quizId: string;
+}
+
+export interface QuizProgress {
+  id?: string;
+  userId: string;
+  quizId: string;
+  categoryId: string;
+  answeredQuestions: {
+    questionId: string;
+    answer: string;
+    correct: boolean;
+  }[];
+  completed: boolean;
+  startedAt: string;
+  lastUpdated: string;
 }
 
 const handleFirebaseError = async <T>(operation: () => Promise<T>, errorMessage: string): Promise<T> => {
@@ -85,36 +100,7 @@ export const getQuiz = async (id: string): Promise<Quiz | null> => {
 // Create a new quiz
 export const createQuiz = async (quiz: Omit<Quiz, 'id'>): Promise<string> => {
   return handleFirebaseError(async () => {
-    // Split the operation into smaller chunks if there are many questions
-    const MAX_BATCH_SIZE = 20;
-    const questions = [...quiz.questions];
-    const firstBatch = questions.splice(0, MAX_BATCH_SIZE);
-
-    // Create the initial quiz document with the first batch of questions
-    const initialQuiz = {
-      ...quiz,
-      questions: firstBatch,
-      totalQuestions: quiz.questions.length // Store total count
-    };
-
-    const docRef = await addDoc(collection(db, 'quizzes'), initialQuiz);
-
-    // If there are remaining questions, update the document with additional batches
-    if (questions.length > 0) {
-      const batches = [];
-      while (questions.length > 0) {
-        const batch = questions.splice(0, MAX_BATCH_SIZE);
-        batches.push(batch);
-      }
-
-      // Update with remaining batches sequentially
-      for (const batch of batches) {
-        await updateDoc(docRef, {
-          questions: arrayUnion(...batch)
-        });
-      }
-    }
-
+    const docRef = await addDoc(collection(db, 'quizzes'), quiz);
     return docRef.id;
   }, 'Error creating quiz');
 };
@@ -204,4 +190,81 @@ export const getQuizResultsByQuiz = async (quizId: string): Promise<QuizResult[]
       ...doc.data()
     } as QuizResult));
   }, 'Error getting quiz results');
+};
+
+// Get quiz progress
+export const getQuizProgress = async (userId: string, categoryId: string): Promise<QuizProgress | null> => {
+  return handleFirebaseError(async () => {
+    const q = query(
+      collection(db, 'quiz_progress'),
+      where('userId', '==', userId),
+      where('categoryId', '==', categoryId),
+      where('completed', '==', false),
+      orderBy('startedAt', 'desc'),
+      limit(1)
+    );
+    
+    const snapshot = await getDocs(q);
+    if (snapshot.empty) return null;
+    
+    return {
+      id: snapshot.docs[0].id,
+      ...snapshot.docs[0].data()
+    } as QuizProgress;
+  }, 'Error getting quiz progress');
+};
+
+// Create new quiz progress
+export const createQuizProgress = async (
+  userId: string,
+  quizId: string,
+  categoryId: string
+): Promise<QuizProgress> => {
+  return handleFirebaseError(async () => {
+    const data: Omit<QuizProgress, 'id'> = {
+      userId,
+      quizId,
+      categoryId,
+      answeredQuestions: [],
+      completed: false,
+      startedAt: new Date().toISOString(),
+      lastUpdated: new Date().toISOString()
+    };
+
+    const docRef = await addDoc(collection(db, 'quiz_progress'), data);
+    return {
+      id: docRef.id,
+      ...data
+    };
+  }, 'Error creating quiz progress');
+};
+
+// Update quiz progress
+export const updateQuizProgress = async (id: string, data: Partial<QuizProgress>): Promise<void> => {
+  return handleFirebaseError(async () => {
+    const docRef = doc(db, 'quiz_progress', id);
+    await updateDoc(docRef, {
+      ...data,
+      lastUpdated: new Date().toISOString()
+    });
+  }, 'Error updating quiz progress');
+};
+
+// Get unanswered questions
+export const getUnansweredQuestions = (quiz: Quiz, progress: QuizProgress): QuizQuestion[] => {
+  const answeredQuestionIds = new Set(progress.answeredQuestions.map(q => q.questionId));
+  return quiz.questions.filter((_, index) => !answeredQuestionIds.has(index.toString()));
+};
+
+// Get quiz statistics
+export const getQuizStats = (quiz: Quiz, progress: QuizProgress): {
+  totalQuestions: number;
+  answeredQuestions: number;
+  remainingQuestions: number;
+} => {
+  return {
+    totalQuestions: quiz.questions.length,
+    answeredQuestions: progress.answeredQuestions.length,
+    remainingQuestions: quiz.questions.length - progress.answeredQuestions.length
+  };
 };
