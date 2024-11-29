@@ -5,9 +5,9 @@ import { Card } from "@/components/ui/card";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import { Activity, Award, Brain, Clock, Target, Trophy } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
-import { getQuizResults, type QuizResult } from '@/lib/quiz';
+import { getQuizResults, saveQuizResult, type QuizResult } from '@/lib/quiz';
 import { Button } from "@/components/ui/button";
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 
 export default function QuizPerformance() {
   const { user } = useAuth();
@@ -15,6 +15,10 @@ export default function QuizPerformance() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const score = searchParams.get('score');
+  const total = searchParams.get('total');
+  const categoryName = searchParams.get('categoryName');
 
   useEffect(() => {
     const fetchResults = async () => {
@@ -24,13 +28,32 @@ export default function QuizPerformance() {
       }
 
       try {
+        // If we have a new score, save it first
+        if (score && total && categoryName && user) {
+          console.log('New score detected:', { score, total, categoryName });
+          const newResult: Omit<QuizResult, 'id'> = {
+            userId: user.uid,
+            score: parseInt(score),
+            totalQuestions: parseInt(total),
+            categoryName: decodeURIComponent(categoryName),
+            timestamp: new Date().toISOString(),
+            subjectName: categoryName, // Use category name as subject name
+            quizId: 'practice-quiz', // Default ID for practice quizzes
+          };
+          console.log('Saving new result:', newResult);
+          await saveQuizResult(newResult);
+          console.log('Result saved, fetching updated results...');
+        }
+
+        // Then fetch all results
         const quizResults = await getQuizResults(user.uid);
+        console.log('Setting results:', quizResults);
         setResults(quizResults.sort((a: QuizResult, b: QuizResult) => 
           new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
         ));
         setError(null);
       } catch (error) {
-        console.error('Error fetching results:', error);
+        console.error('Error in fetchResults:', error);
         setError(error instanceof Error ? error.message : 'Failed to load quiz results. Please try again later.');
       } finally {
         setLoading(false);
@@ -38,7 +61,7 @@ export default function QuizPerformance() {
     };
 
     fetchResults();
-  }, [user]);
+  }, [user, score, total, categoryName]);
 
   if (loading) {
     return (
@@ -110,7 +133,7 @@ export default function QuizPerformance() {
         <Button onClick={() => router.push('/quiz')}>Take Another Quiz</Button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card className="p-6">
           <div className="flex items-center justify-between">
             <div>
@@ -118,22 +141,6 @@ export default function QuizPerformance() {
               <h3 className="text-2xl font-bold mt-1">{results.length}</h3>
             </div>
             <Brain className="h-8 w-8 text-blue-500" />
-          </div>
-        </Card>
-
-        <Card className="p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-500">Average Score</p>
-              <h3 className="text-2xl font-bold mt-1">
-                {Math.round(
-                  results.reduce((acc, result) => 
-                    acc + (result.score / result.totalQuestions) * 100, 0
-                  ) / results.length
-                )}%
-              </h3>
-            </div>
-            <Target className="h-8 w-8 text-blue-500" />
           </div>
         </Card>
 
@@ -185,9 +192,9 @@ export default function QuizPerformance() {
                 <Line 
                   type="monotone" 
                   dataKey="score" 
-                  stroke="#3b82f6" 
+                  stroke="#2563eb" 
                   strokeWidth={2}
-                  name="Score (%)"
+                  dot={{ fill: '#2563eb' }}
                 />
               </LineChart>
             </ResponsiveContainer>
@@ -196,10 +203,10 @@ export default function QuizPerformance() {
 
         <Card className="p-6">
           <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-lg font-semibold">Quiz Categories</h2>
+            <h2 className="text-lg font-semibold">Category Attempts</h2>
             <div className="flex items-center space-x-2">
-              <Award className="h-4 w-4 text-gray-500" />
-              <span className="text-sm text-gray-500">Attempts per category</span>
+              <Target className="h-4 w-4 text-gray-500" />
+              <span className="text-sm text-gray-500">By subject</span>
             </div>
           </div>
           <div className="h-[300px]">
@@ -207,13 +214,9 @@ export default function QuizPerformance() {
               <BarChart data={categoryData}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="category" />
-                <YAxis />
+                <YAxis allowDecimals={false} />
                 <Tooltip />
-                <Bar 
-                  dataKey="attempts" 
-                  fill="#3b82f6"
-                  name="Attempts"
-                />
+                <Bar dataKey="attempts" fill="#2563eb" />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -231,9 +234,7 @@ export default function QuizPerformance() {
               <tr className="border-b">
                 <th className="text-left py-2">Date</th>
                 <th className="text-left py-2">Category</th>
-                <th className="text-left py-2">Difficulty</th>
                 <th className="text-left py-2">Score</th>
-                <th className="text-left py-2">Percentage</th>
               </tr>
             </thead>
             <tbody>
@@ -243,9 +244,6 @@ export default function QuizPerformance() {
                     {new Date(result.timestamp).toLocaleDateString()}
                   </td>
                   <td className="py-2">{result.categoryName}</td>
-                  <td className="py-2">
-                    {result.score}/{result.totalQuestions}
-                  </td>
                   <td className="py-2">
                     {Math.round((result.score / result.totalQuestions) * 100)}%
                   </td>

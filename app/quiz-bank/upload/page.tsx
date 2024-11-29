@@ -280,21 +280,6 @@ export default function QuizUpload() {
               </p>
             </div>
           )}
-
-          <Button
-            onClick={handleUpload}
-            disabled={!questions.length || !subject || !category || loading}
-            className="w-full"
-          >
-            {loading ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Uploading...
-              </>
-            ) : (
-              'Upload Quiz'
-            )}
-          </Button>
         </div>
       </Card>
 
@@ -355,6 +340,21 @@ export default function QuizUpload() {
                 ))}
               </div>
             </ScrollArea>
+
+            <Button
+              onClick={handleUpload}
+              disabled={!questions.length || !subject || !category || loading}
+              className="w-full mt-6"
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                'Save Quiz'
+              )}
+            </Button>
           </div>
         </Card>
       )}

@@ -121,31 +121,40 @@ export const getQuizzesBySubject = async (subjectId: string): Promise<Quiz[]> =>
 // Quiz results management
 export const getQuizResults = async (userId: string): Promise<QuizResult[]> => {
   return handleFirebaseError(async () => {
-    try {
-      const q = query(
-        collection(db, 'quiz_results'),
-        where('userId', '==', userId),
-        orderBy('timestamp', 'desc')
-      );
-      
-      const snapshot = await getDocs(q);
-      return snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      } as QuizResult));
-    } catch (error) {
-      if (error instanceof Error && error.message.includes('requires an index')) {
-        const indexUrl = error.message.match(/https:\/\/console\.firebase\.google\.com[^\s]*/)?.[0];
-        throw new Error(
-          `This query requires a Firestore index. Please create it using this URL: ${indexUrl}`
-        );
-      }
-      throw error;
-    }
+    console.log('Fetching results for user:', userId);
+    const q = query(
+      collection(db, 'quiz_results'),
+      where('userId', '==', userId)
+    );
+    
+    const snapshot = await getDocs(q);
+    const results = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    } as QuizResult));
+
+    console.log('Fetched results:', results);
+
+    // Sort in memory instead of using orderBy
+    return results.sort((a, b) => 
+      new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    );
   }, 'Error getting quiz results');
 };
 
-export const saveQuizResult = async (data: Omit<QuizResult, 'id'>): Promise<string> => {
+export const saveQuizResult = async (result: QuizResult): Promise<void> => {
+  try {
+    console.log('Saving quiz result:', result);
+    const resultsRef = collection(db, 'quiz_results');
+    await addDoc(resultsRef, result);
+    console.log('Quiz result saved successfully');
+  } catch (error) {
+    console.error('Error saving quiz result:', error);
+    throw error;
+  }
+};
+
+export const saveQuizResult2 = async (data: Omit<QuizResult, 'id'>): Promise<string> => {
   return handleFirebaseError(async () => {
     const docRef = await addDoc(collection(db, 'quiz_results'), {
       ...data,

@@ -127,7 +127,7 @@ export default function QuizQuestions() {
     if (unanswered.length === 0) {
       const finalScore = calculateScore(newState);
       clearQuizState(); // Clear saved state when quiz is complete
-      router.push(`/quiz/results?score=${finalScore}&total=${currentQuiz.questions.length}`);
+      router.push(`/quiz/results?score=${finalScore}&total=${currentQuiz.questions.length}&categoryName=${encodeURIComponent(categoryName)}`);
     } else {
       // Reset for next question
       setSelectedAnswer('');
@@ -163,7 +163,9 @@ export default function QuizQuestions() {
   }
 
   const isCorrect = selectedAnswer === currentQuestion.correctAnswer;
-  const progress = Math.round(((currentQuiz.questions.length - remainingQuestions) / currentQuiz.questions.length) * 100);
+  // Show 100% progress when on the last question
+  const progress = remainingQuestions === 1 ? 100 : 
+    Math.round(((currentQuiz.questions.length - remainingQuestions) / currentQuiz.questions.length) * 100);
 
   return (
     <div className="max-w-3xl mx-auto px-4 sm:px-6 py-4 sm:py-6 space-y-6">
@@ -260,7 +262,7 @@ export default function QuizQuestions() {
             onClick={handleNext}
             className="px-6"
           >
-            Next Question
+            {remainingQuestions === 1 ? 'Finish Quiz' : 'Next Question'}
           </Button>
         )}
       </div>
