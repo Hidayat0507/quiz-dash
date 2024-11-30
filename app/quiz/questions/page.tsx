@@ -21,11 +21,14 @@ import {
 import { toast } from 'sonner';
 import { CheckCircle2, XCircle } from 'lucide-react';
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { saveQuizResult } from '@/lib/quiz';
+import { useAuth } from '@/contexts/auth-context';
 
 export default function QuizQuestions() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const categoryId = searchParams.get('categoryId');
+  const { user } = useAuth();
 
   const [loading, setLoading] = useState(true);
   const [categoryName, setCategoryName] = useState('');
@@ -105,7 +108,7 @@ export default function QuizQuestions() {
     setQuizState(saveCurrentAnswer(quizState, selectedAnswer, true));
   };
 
-  const handleNext = () => {
+  const handleNext = async () => {
     if (!currentQuiz || !quizState) return;
 
     const currentQuestion = getCurrentQuestion(currentQuiz, quizState);
@@ -127,7 +130,30 @@ export default function QuizQuestions() {
     if (unanswered.length === 0) {
       const finalScore = calculateScore(newState);
       clearQuizState(); // Clear saved state when quiz is complete
-      router.push(`/quiz/results?score=${finalScore}&total=${currentQuiz.questions.length}&categoryName=${encodeURIComponent(categoryName)}`);
+      
+      if (!user) {
+        toast.error('You must be logged in to save results');
+        return;
+      }
+
+      try {
+        // Save the quiz result first
+        await saveQuizResult({
+          userId: user.uid,
+          score: finalScore,
+          totalQuestions: currentQuiz.questions.length,
+          categoryName: categoryName,
+          timestamp: new Date().toISOString(),
+          subjectName: categoryName,
+          quizId: `${Date.now()}` // Use timestamp as ID
+        });
+
+        // Then navigate to results page
+        router.push(`/quiz/results?score=${finalScore}&total=${currentQuiz.questions.length}&categoryName=${encodeURIComponent(categoryName)}`);
+      } catch (error) {
+        console.error('Error saving quiz result:', error);
+        toast.error('Error saving results. Please try again.');
+      }
     } else {
       // Reset for next question
       setSelectedAnswer('');

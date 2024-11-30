@@ -1,13 +1,12 @@
 "use client";
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Trophy, Target, ArrowRight, BarChart } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { useAuth } from '@/contexts/auth-context';
-import { saveQuizResult, type QuizResult } from '@/lib/quiz';
 import { toast } from 'sonner';
 
 export default function QuizResults() {
@@ -48,30 +47,6 @@ export default function QuizResults() {
       }, 300);
     }
   }, [percentage]);
-
-  useEffect(() => {
-    const saveResult = async () => {
-      if (user && categoryName && !isNaN(score) && !isNaN(total)) {
-        try {
-          const newResult: QuizResult = {
-            userId: user.uid,
-            score: score,
-            totalQuestions: total,
-            categoryName: decodeURIComponent(categoryName),
-            timestamp: new Date().toISOString(),
-            subjectName: decodeURIComponent(categoryName),
-            quizId: 'practice-quiz'
-          };
-          await saveQuizResult(newResult);
-        } catch (error) {
-          console.error('Error saving quiz result:', error);
-          toast.error('Failed to save quiz result');
-        }
-      }
-    };
-
-    saveResult();
-  }, [user, score, total, categoryName]);
 
   const getGrade = () => {
     if (percentage >= 90) return { text: 'Excellent!', color: 'text-green-500' };
@@ -132,18 +107,18 @@ export default function QuizResults() {
             </p>
           </div>
 
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Button onClick={() => router.push('/quiz')}>
-              Try Another Quiz
-              <ArrowRight className="ml-2 h-4 w-4" />
-            </Button>
-            <Button 
-              variant="outline" 
-              onClick={() => router.push('/quiz/performance')}
-              className="flex items-center"
+          <div className="flex justify-center space-x-4">
+            <Button
+              onClick={() => router.push('/quiz')}
+              className="bg-purple-500 hover:bg-purple-600"
             >
-              <BarChart className="mr-2 h-4 w-4" />
-              View Performance History
+              Try Another Quiz
+            </Button>
+            <Button
+              onClick={() => router.push('/quiz/performance')}
+              className="bg-blue-500 hover:bg-blue-600"
+            >
+              View Performance
             </Button>
           </div>
         </div>

@@ -36,7 +36,7 @@ interface EditQuestionForm {
   explanation: string | null;
 }
 
-interface PageProps {
+type PageProps = {
   params: Promise<{
     id: string;
   }>;
@@ -56,6 +56,7 @@ export default function QuestionsPage({ params }: PageProps) {
     explanation: null
   });
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -162,8 +163,10 @@ export default function QuestionsPage({ params }: PageProps) {
       return;
     }
 
+    setDeleting(true);
     try {
-      const updatedQuestions = quiz.questions.filter((_, index) => index !== selectedQuestionIndex);
+      const updatedQuestions = [...quiz.questions];
+      updatedQuestions.splice(selectedQuestionIndex, 1);
       
       if (updatedQuestions.length < 5) {
         toast.error('Quiz must have at least 5 questions');
@@ -171,18 +174,25 @@ export default function QuestionsPage({ params }: PageProps) {
       }
 
       await updateQuiz(quiz.id, {
-        ...quiz,
         questions: updatedQuestions
       });
 
-      setQuiz(prev => prev ? { ...prev, questions: updatedQuestions } : null);
+      setQuiz(prev => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          questions: updatedQuestions
+        };
+      });
+      
       toast.success('Question deleted successfully');
+      setDeleteDialogOpen(false);
     } catch (error) {
       console.error('Error deleting question:', error);
       toast.error('Failed to delete question');
     } finally {
+      setDeleting(false);
       setSelectedQuestionIndex(-1);
-      setDeleteDialogOpen(false);
     }
   };
 
@@ -366,8 +376,16 @@ export default function QuestionsPage({ params }: PageProps) {
             <AlertDialogAction
               onClick={handleDeleteQuestion}
               className="bg-red-600 hover:bg-red-700"
+              disabled={deleting}
             >
-              Delete
+              {deleting ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                'Delete'
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

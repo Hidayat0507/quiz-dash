@@ -11,7 +11,11 @@ import {
   doc,
   getDoc,
   deleteDoc,
-  updateDoc
+  updateDoc,
+  setDoc,
+  type DocumentData,
+  type QueryDocumentSnapshot,
+  type QuerySnapshot
 } from 'firebase/firestore';
 
 // Core quiz interfaces
@@ -43,6 +47,17 @@ export interface QuizResult {
   userId: string;
   subjectName: string;
   quizId: string;
+}
+
+export interface Subject {
+  id: string;
+  name: string;
+}
+
+export interface Category {
+  id: string;
+  name: string;
+  subjectId: string;
 }
 
 const handleFirebaseError = async <T>(operation: () => Promise<T>, errorMessage: string): Promise<T> => {
@@ -118,13 +133,46 @@ export const getQuizzesBySubject = async (subjectId: string): Promise<Quiz[]> =>
   }, 'Error getting quizzes by subject');
 };
 
+// Subject and Category operations
+export async function getSubjects(): Promise<Subject[]> {
+  return handleFirebaseError(async () => {
+    const querySnapshot = await getDocs(collection(db, 'subjects'));
+    return querySnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    } as Subject));
+  }, 'Failed to fetch subjects');
+}
+
+export async function getCategories(subjectId: string): Promise<Category[]> {
+  return handleFirebaseError(async () => {
+    const q = query(
+      collection(db, 'categories'),
+      where('subjectId', '==', subjectId)
+    );
+    const querySnapshot = await getDocs(q);
+    return querySnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    } as Category));
+  }, 'Failed to fetch categories');
+}
+
+// Shared utility function for mapping quiz results
+const mapQuizResults = (snapshot: QuerySnapshot<DocumentData>) => 
+  snapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data()
+  } as QuizResult));
+
 // Quiz results management
 export const getQuizResults = async (userId: string): Promise<QuizResult[]> => {
   return handleFirebaseError(async () => {
     console.log('Fetching results for user:', userId);
     const q = query(
       collection(db, 'quiz_results'),
-      where('userId', '==', userId)
+      where('userId', '==', userId),
+      orderBy('timestamp', 'desc')
     );
     
     const snapshot = await getDocs(q);
@@ -134,48 +182,25 @@ export const getQuizResults = async (userId: string): Promise<QuizResult[]> => {
     } as QuizResult));
 
     console.log('Fetched results:', results);
-
-    // Sort in memory instead of using orderBy
-    return results.sort((a, b) => 
-      new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-    );
+    return results;
   }, 'Error getting quiz results');
 };
 
 export const saveQuizResult = async (result: QuizResult): Promise<void> => {
-  try {
+  return handleFirebaseError(async () => {
     console.log('Saving quiz result:', result);
-    const resultsRef = collection(db, 'quiz_results');
-    await addDoc(resultsRef, result);
-    console.log('Quiz result saved successfully');
-  } catch (error) {
-    console.error('Error saving quiz result:', error);
-    throw error;
-  }
-};
-
-export const saveQuizResult2 = async (data: Omit<QuizResult, 'id'>): Promise<string> => {
-  return handleFirebaseError(async () => {
-    const docRef = await addDoc(collection(db, 'quiz_results'), {
-      ...data,
-      timestamp: new Date().toISOString()
-    });
-    return docRef.id;
+    try {
+      const resultsRef = collection(db, 'quiz_results');
+      const docRef = await addDoc(resultsRef, {
+        ...result,
+        timestamp: new Date().toISOString(),
+        score: Number(result.score),
+        totalQuestions: Number(result.totalQuestions),
+      });
+      console.log('Quiz result saved successfully with ID:', docRef.id);
+    } catch (error) {
+      console.error('Error in saveQuizResult:', error);
+      throw error;
+    }
   }, 'Error saving quiz result');
-};
-
-export const getQuizResultsByQuiz = async (quizId: string): Promise<QuizResult[]> => {
-  return handleFirebaseError(async () => {
-    const q = query(
-      collection(db, 'quiz_results'),
-      where('quizId', '==', quizId),
-      orderBy('timestamp', 'desc')
-    );
-    
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    } as QuizResult));
-  }, 'Error getting quiz results');
 };

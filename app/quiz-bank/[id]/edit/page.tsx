@@ -12,8 +12,16 @@ import { getQuiz, updateQuiz, getSubjects, getCategories, type Quiz, type Subjec
 import { toast } from 'sonner';
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
+import { use } from 'react';
 
-export default function EditQuizPage({ params }: { params: { id: string } }) {
+interface PageProps {
+  params: Promise<{
+    id: string;
+  }>;
+}
+
+export default function EditQuizPage({ params }: PageProps) {
+  const resolvedParams = use(params);
   const [quiz, setQuiz] = useState<Quiz | null>(null);
   const [title, setTitle] = useState('');
   const [selectedSubject, setSelectedSubject] = useState('');
@@ -23,16 +31,21 @@ export default function EditQuizPage({ params }: { params: { id: string } }) {
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [loadingCategories, setLoadingCategories] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
+    let isMounted = true;
+
     const fetchData = async () => {
       try {
-        console.log('Fetching quiz with ID:', params.id);
+        console.log('Fetching quiz with ID:', resolvedParams.id);
         const [fetchedQuiz, fetchedSubjects] = await Promise.all([
-          getQuiz(params.id),
+          getQuiz(resolvedParams.id),
           getSubjects()
         ]);
+
+        if (!isMounted) return;
 
         console.log('Fetched quiz:', fetchedQuiz);
         if (!fetchedQuiz) {
@@ -48,30 +61,57 @@ export default function EditQuizPage({ params }: { params: { id: string } }) {
         setQuestions(fetchedQuiz.questions);
         setSubjects(fetchedSubjects);
 
-        const fetchedCategories = await getCategories(fetchedQuiz.subjectId);
-        setCategories(fetchedCategories);
+        // Fetch categories after setting subject
+        setLoadingCategories(true);
+        try {
+          const fetchedCategories = await getCategories(fetchedQuiz.subjectId);
+          if (isMounted) {
+            setCategories(fetchedCategories);
+          }
+        } catch (error) {
+          if (isMounted) {
+            console.error('Error fetching categories:', error);
+            toast.error('Failed to load categories');
+          }
+        } finally {
+          if (isMounted) {
+            setLoadingCategories(false);
+          }
+        }
       } catch (error) {
-        console.error('Error fetching quiz:', error);
-        toast.error('Failed to load quiz');
+        if (isMounted) {
+          console.error('Error fetching quiz:', error);
+          toast.error('Failed to load quiz');
+        }
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     };
 
-    if (params.id) {
+    if (resolvedParams.id) {
       fetchData();
     }
-  }, [params.id, router]);
+
+    return () => {
+      isMounted = false;
+    };
+  }, [resolvedParams.id, router]);
 
   const handleSubjectChange = async (value: string) => {
     setSelectedSubject(value);
     setSelectedCategory('');
+    setLoadingCategories(true);
     try {
       const fetchedCategories = await getCategories(value);
       setCategories(fetchedCategories);
     } catch (error) {
       console.error('Error fetching categories:', error);
       toast.error('Failed to load categories');
+      setCategories([]);
+    } finally {
+      setLoadingCategories(false);
     }
   };
 
@@ -130,22 +170,26 @@ export default function EditQuizPage({ params }: { params: { id: string } }) {
       !q.question || 
       !q.options.every(opt => opt.trim()) || 
       !q.correctAnswer ||
-      !q.options.includes(q.correctAnswer)
+      !q.options.includes(q.correctAnswer) ||
+      (q.explanation !== null && q.explanation.trim() === '') // Validate explanation if provided
     );
 
     if (invalidQuestions.length > 0) {
-      toast.error('Please complete all questions with valid options and correct answers');
+      toast.error('Please complete all questions with valid options and correct answers. If providing an explanation, it cannot be empty.');
       return;
     }
 
     try {
       setSaving(true);
-      await updateQuiz(params.id, {
+      await updateQuiz(resolvedParams.id, {
         title,
         subjectId: selectedSubject,
         categoryId: selectedCategory,
         categoryName: categories.find(c => c.id === selectedCategory)?.name || '',
-        questions,
+        questions: questions.map(q => ({
+          ...q,
+          explanation: q.explanation?.trim() || null
+        })),
         createdAt: quiz?.createdAt || new Date().toISOString(),
         userId: quiz?.userId || '',
         isActive: true
@@ -229,10 +273,16 @@ export default function EditQuizPage({ params }: { params: { id: string } }) {
                 <Select 
                   value={selectedCategory} 
                   onValueChange={setSelectedCategory}
-                  disabled={!selectedSubject}
+                  disabled={!selectedSubject || loadingCategories}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder={selectedSubject ? "Select a category" : "Select a subject first"} />
+                    <SelectValue placeholder={
+                      loadingCategories 
+                        ? "Loading categories..." 
+                        : selectedSubject 
+                          ? "Select a category" 
+                          : "Select a subject first"
+                    } />
                   </SelectTrigger>
                   <SelectContent>
                     {categories.map((category) => (

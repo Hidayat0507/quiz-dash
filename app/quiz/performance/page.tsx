@@ -5,7 +5,7 @@ import { Card } from "@/components/ui/card";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import { Activity, Award, Brain, Clock, Target, Trophy } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
-import { getQuizResults, saveQuizResult, type QuizResult } from '@/lib/quiz';
+import { getQuizResults, type QuizResult } from '@/lib/quiz';
 import { Button } from "@/components/ui/button";
 import { useRouter, useSearchParams } from 'next/navigation';
 
@@ -28,23 +28,6 @@ export default function QuizPerformance() {
       }
 
       try {
-        // If we have a new score, save it first
-        if (score && total && categoryName && user) {
-          console.log('New score detected:', { score, total, categoryName });
-          const newResult: Omit<QuizResult, 'id'> = {
-            userId: user.uid,
-            score: parseInt(score),
-            totalQuestions: parseInt(total),
-            categoryName: decodeURIComponent(categoryName),
-            timestamp: new Date().toISOString(),
-            subjectName: categoryName, // Use category name as subject name
-            quizId: 'practice-quiz', // Default ID for practice quizzes
-          };
-          console.log('Saving new result:', newResult);
-          await saveQuizResult(newResult);
-          console.log('Result saved, fetching updated results...');
-        }
-
         // Then fetch all results
         const quizResults = await getQuizResults(user.uid);
         console.log('Setting results:', quizResults);
@@ -61,7 +44,7 @@ export default function QuizPerformance() {
     };
 
     fetchResults();
-  }, [user, score, total, categoryName]);
+  }, [user, searchParams]);
 
   if (loading) {
     return (
